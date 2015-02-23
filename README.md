@@ -1,4 +1,4 @@
-NAGA: Erlang Web Framework
+Nāga: Erlang Web Framework
 ==========================
 
 
