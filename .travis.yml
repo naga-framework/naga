@@ -1,0 +1,8 @@
+language: erlang
+otp_release:
+   - 17.4
+   - 17.1
+script: "./mad deps com"
+notifications:
+recipients:
+- chan.sisowath@gmail.com

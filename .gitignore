@@ -1,0 +1,6 @@
+ebin
+*.beam
+erl_crash.dump
+logs
+.naga.plt
+deps
