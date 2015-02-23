@@ -1,2 +1,4 @@
-# naga
-naga: Erlang Web Framework
+NAGA: Erlang Web Framework
+==========================
+
+
