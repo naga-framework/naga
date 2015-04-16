@@ -28,11 +28,11 @@ Usage
 
   mad integrate a small template engine for creating naga app
 
-  $ mad naga create <app_name>
+  `$ mad naga create <app_name>`
 
-  will create a folder <
+  will create a folder 
 
-```
+```bash
     $ mad naga create test
     Create Naga App Params: ["create","test"]
     Writing test/rebar.config
@@ -51,4 +51,4 @@ Usage
     Writing test/Makefile
     $ cd test
     $ make
-```bash    
+```  
