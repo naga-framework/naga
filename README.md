@@ -28,9 +28,7 @@ Usage
 
   mad integrate a small template engine for creating naga app
 
-  `$ mad naga create <app_name>`
-
-  will create a folder 
+    $ mad naga create <app_name>
 
 ```bash
     $ mad naga create test
