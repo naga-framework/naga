@@ -1,9 +1,11 @@
 Nāga: Erlang Web Framework
 ==========================
 
-TODO: write [great documentation](http://jacobian.org/writing/great-documentation/what-to-write/)
+## Requirements
 
-# Introduction to Nāga
+- [Erlang/OTP](http://www.erlang.org) version >= 17
+
+# Get Started
 
   to create and build a naga application you need to install [mad](https://github.com/naga-web/mad.git).
 
