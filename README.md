@@ -25,7 +25,7 @@ and drop it in your $PATH
 ## Build mad from source
 
 ```bash
-    $ git clone https://github.com/naga-web/mad.git -b naga
+    $ git clone https://github.com/naga-web/mad.git
     $ cd mad
     $ make    
 ```
