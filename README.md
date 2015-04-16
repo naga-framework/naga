@@ -7,10 +7,9 @@ TODO: write [great documentation](http://jacobian.org/writing/great-documentatio
 
   to create and build a naga application you need to install [mad](https://github.com/naga-web/mad.git).
 
-Downloading
-===========
+# Downloading
 
-You can download the script directly from github:
+You can download mad directly from github:
 
     $ curl -O https://raw.githubusercontent.com/naga-web/mad/naga/mad
 
@@ -21,10 +20,18 @@ Then ensure it is executable
 and drop it in your $PATH
 
 
-Usage
-=====
+# Build mad from source
 
-# create a naga app:
+```bash
+    $ git clone https://github.com/naga-web/mad.git -b naga
+    $ cd mad
+    $ make    
+```
+
+and drop it in your $PATH
+
+
+# Create a Naga app:
 
   mad integrate a small template engine for creating naga app
 
