@@ -37,7 +37,7 @@ and drop it in your $PATH
 
   mad integrate a small template engine for creating naga app
 
-    $ mad naga create <app_name>
+    $ mad naga create name=<app_name>
 
 ```bash
     $ mad naga create name=test
