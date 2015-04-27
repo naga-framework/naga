@@ -40,7 +40,7 @@ and drop it in your $PATH
     $ mad naga create <app_name>
 
 ```bash
-    $ mad naga create test
+    $ mad naga create name=test
     Create Naga App Params: ["create","test"]
     Writing test/rebar.config
     Writing test/priv/test.config
