@@ -7,13 +7,13 @@ Nāga: Erlang Web Framework
 
 # Get Started
 
-  to create and build a naga application you need to install [mad](https://github.com/naga-web/mad.git).
+  to create and build a naga application you need to install [mad](https://github.com/naga-framework/mad.git).
 
 ## Downloading
 
 You can download mad directly from github:
 
-    $ curl -O https://raw.githubusercontent.com/naga-web/mad/naga/mad
+    $ curl -O https://raw.githubusercontent.com/naga-framework/mad/naga/mad
 
 Then ensure it is executable
 
@@ -25,7 +25,7 @@ and drop it in your $PATH
 ## Build mad from source
 
 ```bash
-    $ git clone https://github.com/naga-web/mad.git
+    $ git clone https://github.com/naga-framework/mad.git
     $ cd mad
     $ make    
 ```
