@@ -3,7 +3,7 @@ Nāga: Erlang Web Framework
 
 ## Requirements
 
-- [Erlang/OTP](http://www.erlang.org) version >= 17
+- [Erlang/OTP](http://www.erlang.org) version >= 18
 
 # Get Started
 
