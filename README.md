@@ -1,8 +1,8 @@
 Nāga: Erlang Web Framework (beta)
 =================================
 
-a faster, lighter version of [ChicagoBoss Framework](http://www.chicagoboss.org),  
-and integrate [N2O webframework](http://github.com/5HT/n2o), 
+a faster, lighter version of [ChicagoBoss web framework](http://www.chicagoboss.org),  
+and integrate [N2O web framework](http://github.com/5HT/n2o), 
 you have the best of both in one framework.
 
 
