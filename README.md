@@ -1,17 +1,18 @@
 Nāga: Erlang Web Framework (beta)
 =================================
 
-#GOAL:
- keep it small, fast, less dependencies as much as possible (less maintenance), 
- no PMOD, compiled module base for routing
- bring mvc (ChicagoBoss flavour) to n2o framework instead bringing n2o to CB. 
- you endup with less code :).
- actually it is VC (view, controller), the M is up to you (boss_db, kvs, ...)
+#NAGA == M[VC] + websocket on steroid (n2o), the M is up to you (boss_db, kvs, ...)
+
+GOAL:
+ - keep it small, fast, less dependencies as much as possible, 
+ - NO PMOD, 
+ - compiled module base for routing
+ - bring ChicagoBoss flavour to n2o framework instead of bringing n2o to CB. (less code) 
  
 
-## Requirements
+# Requirements
 
-- [Erlang/OTP](http://www.erlang.org) version >= 17,  require maps available only on erlang/OTP 17
+- [Erlang/OTP](http://www.erlang.org) version >= 17,  require maps
 
 # Get Started
 
