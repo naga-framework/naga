@@ -22,7 +22,7 @@ GOAL:
 
 You can download mad directly from github:
 
-    $ curl -O https://raw.githubusercontent.com/naga-framework/mad/naga/mad
+    $ curl -O https://raw.githubusercontent.com/naga-framework/mad/naga_v2/mad
 
 Then ensure it is executable
 
@@ -46,25 +46,26 @@ and drop it in your $PATH
 
   mad integrate a small template engine for creating naga app
 
-    $ mad naga create name=<app_name>
+    $ mad create name=<app_name> tpl=<tpl_name>
 
 ```bash
-    $ mad naga create name=test
-    Create Naga App Params: ["create","test"]
-    Writing test/rebar.config
-    Writing test/priv/test.config
-    Writing test/src/test.app.src
-    Writing test/src/test_app.erl
-    Writing test/src/test_sup.erl
-    Writing test/src/test.erl
-    Writing test/src/controller/test_index_controller.erl
-    Writing test/src/view/lib/tag_modules/test_custom_tags.erl
-    Writing test/src/view/lib/filter_modules/test_custom_filters.erl
-    Writing test/priv/test.routes
-    Writing test/start.sh
-    Writing test/src/view/index/index.html
-    Writing test/src/view/lib/README
-    Writing test/Makefile
-    $ cd test
-    $ make
+mad create name=toto tpl=hello port=9000
+Name = "toto"
+TplName = "hello"
+Vars = [{port,"9000"},{tpl,"hello"},{name,"toto"}]
+Writing toto/apps/toto/rebar.config
+Writing toto/apps/rebar.config
+Writing toto/rebar.config
+Writing toto/vm.args
+Writing toto/sys.config
+Writing toto/apps/toto/src/toto.app.src
+Writing toto/apps/toto/src/toto.erl
+Writing toto/apps/toto/src/controller/index.erl
+Writing toto/apps/toto/src/controller/error.erl
+Writing toto/apps/toto/src/toto_routes.erl
+Writing toto/apps/toto/src/view/index/index.html
+Writing toto/apps/toto/src/view/error/404.html
+OK
+cd toto
+mad deps comp plan repl
 ```  
