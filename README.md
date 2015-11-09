@@ -1,7 +1,7 @@
-Nāga: Erlang Web Framework (beta)
+#Nāga: Erlang Web Framework (beta)
 =================================
 
-#NAGA == M[VC] + websocket on steroid (n2o), the M is up to you (boss_db, kvs, ...)
+##NAGA == M, [V, C] + websocket on steroid (n2o), the M is up to you (boss_db, kvs, ...)
 
 GOAL:
  - keep it small, fast, less dependencies as much as possible, 
