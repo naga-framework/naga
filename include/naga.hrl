@@ -1,0 +1,4 @@
+-ifndef(NAGA_HRL).
+-define(NAGA_HRL, true).
+-record(route, {app, controller, action, opts}).
+-endif.

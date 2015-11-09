@@ -1,9 +1,9 @@
 {application, naga, [
-{description, "Naga Erlang Web Framework"},
-{vsn, "0.1"},
-{applications, [kernel, stdlib, cowboy, ranch, erlydtl]},
-{modules, []},
-{registered, []},
-{mod, { naga_app, []}},
-{env, []}
+    {description,  "Naga Web Application Server."},
+    {vsn,          "0.2"},
+    {applications, [kernel, stdlib, n2o]},
+    {modules, []},
+    {registered,   []},
+    {mod, { naga,   []}},
+    {env, []}
 ]}.

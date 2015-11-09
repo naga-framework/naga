@@ -1,14 +1,17 @@
 Nāga: Erlang Web Framework (beta)
 =================================
 
-a faster, lighter version of [ChicagoBoss web framework](http://www.chicagoboss.org),  
-and integrate [N2O web framework](http://github.com/5HT/n2o), 
-you have the best of both in one framework.
-
+#GOAL:
+ keep it small, fast, less dependencies as much as possible (less maintenance), 
+ no PMOD, compiled module base for routing
+ bring mvc (ChicagoBoss flavour) to n2o framework instead bringing n2o to CB. 
+ you endup with less code :).
+ actually it is VC (view, controller), the M is up to you (boss_db, kvs, ...)
+ 
 
 ## Requirements
 
-- [Erlang/OTP](http://www.erlang.org) version >= 18
+- [Erlang/OTP](http://www.erlang.org) version >= 17,  require maps available only on erlang/OTP 17
 
 # Get Started
 

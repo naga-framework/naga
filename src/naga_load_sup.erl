@@ -1,1 +1,0 @@
--module(naga_load_sup).
