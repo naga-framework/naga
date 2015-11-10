@@ -18,7 +18,7 @@ handle(Req, State)               -> {ok, NewReq} = naga_mvc:run(Req), {ok, NewRe
 params(Req)                -> cowboy_req:qs_vals(Req).
 form(Req)                  -> {ok,Params,NewReq} = cowboy_req:body_qs(Req), {Params,NewReq}.
 path(Req)                  -> {Path,_NewReq} = cowboy_req:path(Req), Path.
-method(Req)                -> {Method,_NewReq} = cowboy_req:path(Req), Method.
+method(Req)                -> {Method,_NewReq} = cowboy_req:method(Req), Method.
 request_body(Req)          -> cowboy_req:body(Req).
 headers(Req)               -> cowboy_req:headers(Req).
 header(Name, Value, Req)   -> cowboy_req:set_resp_header(Name, Value, Req).
