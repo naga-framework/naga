@@ -19,9 +19,14 @@ run(Req) ->
     wf:actions(Ctx1#cx.actions),
     wf:context(Ctx1),
     case Ctx1#cx.path of #route{}=Route ->
-            #route{app=App,controller=Ctrl,action=Act} = Route,
+            #route{app=App,controller=Ctrl,action=Act,opts=O} = Route,
             case erlang:function_exported(Ctrl, Act, 3) of 
-                true  -> handler(Req, #mvc{pid=Pid,route=Route, ctx=Ctx, ctx1=Ctx1, reqCtx=reqCtx(Route)});
+                true  ->
+                    Mvc = #mvc{pid=Pid,ctx=Ctx,ctx1=Ctx1,route=Route, reqCtx=reqCtx(Route)},
+                    case before(Mvc, wf:config(App, filter_config, undefined), wf:config(App,before,[])) of
+                        {ok, NewMvc} ->  
+                          handler(Req, NewMvc);
+                        {error, NewMvc, ErrorElement} -> render_elements(Req, NewMvc, ErrorElement) end;
                 false ->
                     Elements = try (Ctx1#cx.module):main() catch C:E -> wf:error_page(C,E) end,
                     render_elements(Req, #mvc{pid=Pid,ctx=Ctx,ctx1=Ctx1}, Elements) end;
@@ -42,20 +47,110 @@ set_cookies([],Req)-> Req;
 set_cookies([{Name,Value,Path,TTL}|Cookies],Req)->
     set_cookies(Cookies,wf:cookie_req(Name,Value,Path,TTL,Req)).
 
+reqCtx(#route{app=App,controller=Ctrl,action=Act}) -> 
+    #{ '_app'       => App, 
+       '_controller'=> Ctrl, 
+       '_action'    => Act, 
+       '_lang'      => ?CTX#cx.lang,
+       '_session_id'=> wf:session_id()
+     }.
+
 %%req => (1)routing  -> {app ,controller,action} *? hook {before}
 %%    -> (2)handler  -> {code,   headers,  vars} *? hook {middle}
 %%    -> (3)render   -> {code,   headers,  body} *? hook {after}
 %%    -> (4)response => {code,   headers,  body} 
 
-reqCtx(#route{app=App,controller=Ctrl,action=Act}) -> 
-    #{ '_app' => App, '_controller'=>Ctrl, 
-       '_action'=>Act, '_lang' => ?CTX#cx.lang,
-       '_session_id' => wf:session_id()
-     }.
+%% ----------- controller return value from CB API ---------- code ----------------------- DOC ---------------------------------
+%% {ok, Variables::proplist()}                                200  Variables will be passed into the associated Django template.
+%%
+%% {ok, Variables::proplist(), Headers::proplist()}           200  Variables will be passed into the associated Django template, 
+%%                                                                  and Headers are HTTP headers you want to set (e.g., Content-Type).
+%% js                                                         200  The template will be rendered without any variables 
+%%                                                                  and served as Content-Type: application/javascript.
+%% {js, Variables::proplist()}                                200  Variables will be passed into the associated Django template and 
+%%                                                                  the result will be served as Content-Type: application/javascript.
+%% {js, Variables::proplist(), Headers::proplist()}           200  Variables will be passed into the associated Django template and 
+%%                                                                  the result will be served as Content-Type: application/javascript.
+%%                                                                  and Headers are HTTP headers you want to set.
+%% {redirect, Location}                                       302  Perform a 302 HTTP redirect to Location, 
+%%                                                                  which may be a URL string or a proplist of parameters that will be
+%%                                                                  converted to a URL using the routes system.
+%% {redirect, Location, Headers::proplist()}                  302  Perform a 302 HTTP redirect to Location and set additional 
+%%                                                                  HTTP Headers.
+%% {moved, Location}                                          301  Perform a 301 HTTP redirect to Location, which may be a URL string 
+%%                                                                  or a proplist of parameters that will be converted to a URL using 
+%%                                                                  the routes system.
+%% {{moved, Location, Headers::proplist()}                    301  Perform a 301 HTTP redirect to Location and set additional 
+%%                                                                  HTTP Headers.
+%% {action_other, OtherLocation}                              200  Execute the controller action specified by OtherLocation, 
+%%                                                                  but without performing an HTTP redirect.
+%% {render_other, OtherLocation}                              200  Render the view from OtherLocation, but don't actually execute 
+%%                                                                  the associated controller action. 
+%% {render_other, OtherLocation, Variables}                   200  Render the view from OtherLocation using Variables, 
+%%                                                                  but don't actually execute the associated controller action.
+%% {output, Output::iolist()}                                 200  Skip views altogether and return Output to the client.
+%%
+%% {output, Output::iolist(), Headers::proplist()}            200  Skip views altogether and return Output to the client
+%%                                                                  while setting additional HTTP Headers.
+%% {stream, Generator::function(), Acc0}                      200  Stream a response to the client using HTTP chunked encoding. 
+%%                                                                  For each chunk, the Generator function is passed
+%%                                                                  an accumulator (initally Acc0) and should return either 
+%%                                                                  {output, Data, Acc1} or done.
+%% {stream, Generator::function(), Acc0, Headers::proplist()} 200  Same as above, but set additional HTTP Headers.
+%% 
+%% {json, Data::proplist()}                                   200  Return Data as a JSON object to the client. Performs appropriate 
+%%                                                                  serialization if the values in Data contain a BossRecord or a list of BossRecords.
+%% {json, Data::proplist(), Headers::proplist()}              200  Return Data as a JSON object to the client. Performs appropriate 
+%%                                                                  serialization if the values in Data contain a BossRecord or a list of BossRecords.
+%% {jsonp, Data::proplist()}                                  200  Returns Data as a JSONP method call to the client. 
+%%                                                                  Performs appropriate serialization if the values in Data contain a BossRecord 
+%%                                                                  or a list of BossRecords.                                                            
+%% {jsonp, Data::proplist(), Headers::proplist()}             200  Return Data as a JSON object to the client. Performs appropriate 
+%%                                                                 serialization if the values in Data contain a BossRecord or a list of BossRecords.
+%% {jsonp, Callback::string(), Data::proplist(), Headers::proplist()} 
+%%                                                            200  Return Data to the client as a JSONP method call (as above) 
+%%                                                                  while setting additional HTTP Headers.
+%% not_found                                                  404  Invoke the 404 File Not Found handler.
+%% 
+%% {Code::integer(), Body::iolist(), Headers::proplist()}     Code Return an arbitary HTTP integer StatusCode along with a Body 
+%%                                                                  and additional HTTP Headers.
+%%
+%% ---------------------------------------------------------------------------------------
 
+
+%% ===== Filter Config ======
+%% Filter module can be installed with the controller_filter_modules config option:
+%% {controller_filter_modules, [my_awesome_filter1, my_awesome_filter2]}
+%% Filters are applied in order. For a particular controller, you can override the default filter list with the following three functions:
+
+
+%% ===== SHORT NAME ======
+%% Setting a short name and default config value
+%% Filter modules can export two functions to set a short name for themselves and to provide a default config value:
+
+%% -module(my_awesome_filter).
+%% -export([config_key/0, config_default_value/0]).
+
+%% config_key() -> 'awesome'.
+%% config_default_value() -> [{awesomeness, 50}].
+
+
+before(Mvc, undefined, []) -> {ok, Mvc};
+before(#mvc{route=#route{controller=Ctrl},reqCtx=ReqCtx}=Mvc, CfgFilters, Filters) ->
+    NewFilters = case erlang:function_exported(Ctrl, before_filters, 2) of 
+                     true -> Ctrl:before_filters(Filters, ReqCtx); false -> Filters end,
+    case lists:foldl(fun(F, {ok, Ctx}) -> 
+                        try F:before_filter(CfgFilters,Ctx) catch C:E -> {error, Ctx, wf:error_page(C,E)} end;
+                        (_, {error, _, _}=Err) -> Err;
+                        (_, Acc) -> Acc % redirect 
+                      end, {ok, ReqCtx},  NewFilters) of
+    {ok, NewCtx} -> {ok, Mvc#mvc{reqCtx=NewCtx}};
+    {error, NewCtx, Error} -> {error, Mvc#mvc{reqCtx=NewCtx}, Error} end.
+
+%% seem that when include n2o file, we execute twice the handler ???         
 handler(Req, #mvc{route=#route{app=App,controller=Ctrl,action=Act,opts=O},reqCtx=ReqCtx}=Mvc) ->
-  Result = try Ctrl:Act(wf:method(Req),[],ReqCtx) catch C:E -> {error,wf:error_page(C,E)} end,  
-  try render(Req, Mvc, Result) catch C1:E1 -> render_elements(Req, Mvc, wf:error_page(C1,E1)) end.
+  R = try Ctrl:Act(wf:method(Req),[],ReqCtx) catch C:E -> {error,wf:error_page(C,E)} end,  
+  try render(Req, Mvc, R) catch C1:E1 -> render_elements(Req, Mvc, wf:error_page(C1,E1)) end.
 
 render(Req, #mvc{pid=Pid,ctx=Ctx,ctx1=Ctx1}, #dtl{}=Elements) ->
     render_elements(Req, #mvc{pid=Pid,ctx=Ctx,ctx1=Ctx1}, Elements);
@@ -66,52 +161,6 @@ render(Req, Mvc, {ok, Vars}) -> render(Req, Mvc, {ok, [], Vars});
 render(Req, #mvc{route=#route{app=App,controller=Ctrl,action=Act},reqCtx=ReqCtx}=Mvc, {ok, Headers, Vars}) ->
   Req2 = lists:foldl(fun({K,V},Rq) -> wf:header(K,V, Rq) end,Req, Headers++ctype(html)),
   render_elements(Req2, Mvc, #dtl{file={App,Ctrl,Act,"_html"}, app=App, bindings=Vars++maps:to_list(ReqCtx)}).
-
-% % render json with erlydtl
-% render(Req, Mvc, {{json,view}, Vars}) -> render(Req, Mvc, {js, [], Vars});
-% render(Req, #mvc{route=#route{app=App,controller=Ctrl,action=Act}}=Mvc, {js, Headers, Vars}) ->
-%   Req2 = lists:foldl(fun({K,V},Rq) -> wf:header(K,V, Rq) end,Req, Headers++ctype(json)),
-%   render_elements(Req2, Mvc, #dtl{file={App,Ctrl,Act,"js"}, app=App, bindings=Vars});
-
-% % render json with jsone
-% render(Req, Mvc, {json, Vars}) -> render(Req, Mvc, {js, [], Vars});
-% render(Req, #mvc{route=#route{app=App,controller=Ctrl,action=Act}}=Mvc, {js, Headers, Vars}) ->
-%   Req2 = lists:foldl(fun({K,V},Rq) -> wf:header(K,V, Rq) end,Req, Headers++ctype(json)),
-%   render_elements(Req2, Mvc, jsone:encode(Vars));
-
-% % render js with erlydtl
-% render(Req, Mvc, {js, Vars}) -> render(Req, Mvc, {js, [], Vars});
-% render(Req, #mvc{route=#route{app=App,controller=Ctrl,action=Act}}=Mvc, {js, Headers, Vars}) ->
-%   Req2 = lists:foldl(fun({K,V},Rq) -> wf:header(K,V, Rq) end,Req, Headers++ctype(js)),
-%   render_elements(Req2, Mvc, #dtl{file={App,Ctrl,Act,"js"}, app=App, bindings=Vars});
-
-% % render css with erlydtl
-% render(Req, Mvc, {css, Vars}) -> render(Req, Mvc, {css, [], Vars});
-% render(Req, #mvc{route=#route{app=App,controller=Ctrl,action=Act}}=Mvc, {css, Headers, Vars}) ->
-%   Req2 = lists:foldl(fun({K,V},Rq) -> wf:header(K,V, Rq) end,Req, Headers++ctype(css)),
-%   render_elements(Req2, Mvc, #dtl{file={App,Ctrl,Act,"css"}, app=App, bindings=Vars});
-
-% % render txt with erlydtl
-% render(Req, Mvc, {txt, Vars}) -> render(Req, Mvc, {txt, [], Vars});
-% render(Req, #mvc{route=#route{app=App,controller=Ctrl,action=Act}}=Mvc, {css, Headers, Vars}) ->
-%   Req2 = lists:foldl(fun({K,V},Rq) -> wf:header(K,V, Rq) end,Req, Headers++ctype(txt)),
-%   render_elements(Req2, Mvc, #dtl{file={App,Ctrl,Act,"txt"}, app=App, bindings=Vars}).
-
-% render(Req, Mvc, {output, Vars}) -> 
-%  render(Req, Mvc#mvc{route=New}, {ok, Vars});
-
-% render(Req, Mvc, {render_other, #route{}=New, Vars}) -> 
-%  render(Req, Mvc#mvc{route=New}, {ok, Vars});
-
-%301
-%redirect({http,Url}) -> wf:header(<<"Location">>,wf:to_binary(Url)), wf:state(status,301), [];
-% render(Req,Mvc,{redirect, Location}) -> 
-%     wf:redirect({http,Location}), render_elements(Req,Mvc,#dtl{});
-% render(Req,Mvc,{redirect, Location, Headers}) -> 
-%     Req2 = lists:foldl(fun({K,V},Rq) -> wf:header(K,V, Rq) end,Req, Headers),
-%     wf:redirect({http,Location}),render_elements(Req2,Mvc,#dtl{}).
-
-%FIXME: 302 ?
 
 
 ctype(Type) ->
