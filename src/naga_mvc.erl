@@ -23,10 +23,11 @@ run(Req) ->
             case erlang:function_exported(Ctrl, Act, 3) of 
                 true  ->
                     Mvc = #mvc{pid=Pid,ctx=Ctx,ctx1=Ctx1,route=Route, reqCtx=reqCtx(Route)},
-                    case before(Mvc, wf:config(App, filter_config, undefined), wf:config(App,before,[])) of
-                        {ok, NewMvc} ->  
-                          handler(Req, NewMvc);
-                        {error, NewMvc, ErrorElement} -> render_elements(Req, NewMvc, ErrorElement) end;
+                    handler(Req, Mvc);
+                    % case before(Mvc, wf:config(App, filter_config, undefined), wf:config(App,before,[])) of
+                    %     {ok, NewMvc} ->  
+                    %       handler(Req, NewMvc);
+                    %     {error, NewMvc, ErrorElement} -> render_elements(Req, NewMvc, ErrorElement) end;
                 false ->
                     Elements = try (Ctx1#cx.module):main() catch C:E -> wf:error_page(C,E) end,
                     render_elements(Req, #mvc{pid=Pid,ctx=Ctx,ctx1=Ctx1}, Elements) end;
@@ -147,7 +148,7 @@ before(#mvc{route=#route{controller=Ctrl},reqCtx=ReqCtx}=Mvc, CfgFilters, Filter
     {ok, NewCtx} -> {ok, Mvc#mvc{reqCtx=NewCtx}};
     {error, NewCtx, Error} -> {error, Mvc#mvc{reqCtx=NewCtx}, Error} end.
 
-%% seem that when include n2o file, we execute twice the handler ???         
+%% no related to before filter        
 handler(Req, #mvc{route=#route{app=App,controller=Ctrl,action=Act,opts=O},reqCtx=ReqCtx}=Mvc) ->
   R = try Ctrl:Act(wf:method(Req),[],ReqCtx) catch C:E -> {error,wf:error_page(C,E)} end,  
   try render(Req, Mvc, R) catch C1:E1 -> render_elements(Req, Mvc, wf:error_page(C1,E1)) end.
