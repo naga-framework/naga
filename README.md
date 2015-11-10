@@ -1,13 +1,11 @@
 #Nāga: Erlang Web Framework (beta)
 =================================
 
-##NAGA == M, [V, C] + websocket on steroid (n2o), the M is up to you (boss_db, kvs, ...)
-
 GOAL:
- - keep it small, fast, less dependencies as much as possible, 
+ - Keep it small, fast, less dependencies as much as possible, 
  - NO PMOD, 
- - compiled module base for routing
- - bring ChicagoBoss flavour to n2o framework instead of bringing n2o to CB. (less code) 
+ - Compiled module base for routing
+ - Bring ChicagoBoss flavour to n2o framework.
  
 
 # Requirements
@@ -69,3 +67,9 @@ OK
 cd toto
 mad deps comp plan repl
 ```  
+## start to develop
+
+```shell
+cd toto
+mad deps comp plan repl
+```
