@@ -64,8 +64,6 @@ Writing toto/apps/toto/src/toto_routes.erl
 Writing toto/apps/toto/src/view/index/index.html
 Writing toto/apps/toto/src/view/error/404.html
 OK
-cd toto
-mad deps comp plan repl
 ```  
 ## start to develop
 
