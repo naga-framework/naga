@@ -61,79 +61,66 @@ reqCtx(#route{app=App,controller=Ctrl,action=Act}) ->
 %%    -> (3)render   -> {code,   headers,  body} *? hook {after}
 %%    -> (4)response => {code,   headers,  body} 
 
-%% ----------- controller return value from CB API ---------- code ----------------------- DOC ---------------------------------
-%% {ok, Variables::proplist()}                                200  Variables will be passed into the associated Django template.
+%% status ----------- controller return value from CB API ---------- code ----------------------- DOC ---------------------------------
+%%  done     {ok, Variables::proplist()}                                200  Variables will be passed into the associated Django template.
 %%
-%% {ok, Variables::proplist(), Headers::proplist()}           200  Variables will be passed into the associated Django template, 
-%%                                                                  and Headers are HTTP headers you want to set (e.g., Content-Type).
-%% js                                                         200  The template will be rendered without any variables 
-%%                                                                  and served as Content-Type: application/javascript.
-%% {js, Variables::proplist()}                                200  Variables will be passed into the associated Django template and 
-%%                                                                  the result will be served as Content-Type: application/javascript.
-%% {js, Variables::proplist(), Headers::proplist()}           200  Variables will be passed into the associated Django template and 
-%%                                                                  the result will be served as Content-Type: application/javascript.
-%%                                                                  and Headers are HTTP headers you want to set.
-%% {redirect, Location}                                       302  Perform a 302 HTTP redirect to Location, 
-%%                                                                  which may be a URL string or a proplist of parameters that will be
-%%                                                                  converted to a URL using the routes system.
-%% {redirect, Location, Headers::proplist()}                  302  Perform a 302 HTTP redirect to Location and set additional 
-%%                                                                  HTTP Headers.
-%% {moved, Location}                                          301  Perform a 301 HTTP redirect to Location, which may be a URL string 
-%%                                                                  or a proplist of parameters that will be converted to a URL using 
-%%                                                                  the routes system.
-%% {{moved, Location, Headers::proplist()}                    301  Perform a 301 HTTP redirect to Location and set additional 
-%%                                                                  HTTP Headers.
-%% {action_other, OtherLocation}                              200  Execute the controller action specified by OtherLocation, 
-%%                                                                  but without performing an HTTP redirect.
-%% {render_other, OtherLocation}                              200  Render the view from OtherLocation, but don't actually execute 
-%%                                                                  the associated controller action. 
-%% {render_other, OtherLocation, Variables}                   200  Render the view from OtherLocation using Variables, 
-%%                                                                  but don't actually execute the associated controller action.
-%% {output, Output::iolist()}                                 200  Skip views altogether and return Output to the client.
+%%  done     {ok, Variables::proplist(), Headers::proplist()}           200  Variables will be passed into the associated Django template, 
+%%                                                                            and Headers are HTTP headers you want to set (e.g., Content-Type).
+%%           notfound                                                   404  Invoke the 404 File Not Found handler.
 %%
-%% {output, Output::iolist(), Headers::proplist()}            200  Skip views altogether and return Output to the client
-%%                                                                  while setting additional HTTP Headers.
-%% {stream, Generator::function(), Acc0}                      200  Stream a response to the client using HTTP chunked encoding. 
-%%                                                                  For each chunk, the Generator function is passed
-%%                                                                  an accumulator (initally Acc0) and should return either 
-%%                                                                  {output, Data, Acc1} or done.
-%% {stream, Generator::function(), Acc0, Headers::proplist()} 200  Same as above, but set additional HTTP Headers.
+%%  done     {redirect, Location}                                       302  Perform a 302 HTTP redirect to Location, 
+%%                                                                            which may be a URL string or a proplist of parameters that will be
+%%                                                                            converted to a URL using the routes system.
+%%  done     {redirect, Location, Headers::proplist()}                  302  Perform a 302 HTTP redirect to Location and set additional 
+%%                                                                            HTTP Headers.
+%%  done     {moved, Location}                                          301  Perform a 301 HTTP redirect to Location, which may be a URL string 
+%%                                                                            or a proplist of parameters that will be converted to a URL using 
+%%                                                                            the routes system.
+%%  done     {{moved, Location, Headers::proplist()}                    301  Perform a 301 HTTP redirect to Location and set additional 
+%%                                                                            HTTP Headers.
+%%           {action_other, OtherLocation}                              200  Execute the controller action specified by OtherLocation, 
+%%                                                                            but without performing an HTTP redirect.
+%%           {render_other, OtherLocation}                              200  Render the view from OtherLocation, but don't actually execute 
+%%                                                                            the associated controller action. 
+%%           {render_other, OtherLocation, Variables}                   200  Render the view from OtherLocation using Variables, 
+%%                                                                            but don't actually execute the associated controller action.
+%%           {output, Output::iolist()}                                 200  Skip views altogether and return Output to the client.
+%%
+%%           {output, Output::iolist(), Headers::proplist()}            200  Skip views altogether and return Output to the client
+%%                                                                            while setting additional HTTP Headers.
+%%           {stream, Generator::function(), Acc0}                      200  Stream a response to the client using HTTP chunked encoding. 
+%%                                                                            For each chunk, the Generator function is passed
+%%                                                                            an accumulator (initally Acc0) and should return either 
+%%                                                                            {output, Data, Acc1} or done.
+%%           {stream, Generator::function(), Acc0, Headers::proplist()} 200  Same as above, but set additional HTTP Headers.
 %% 
-%% {json, Data::proplist()}                                   200  Return Data as a JSON object to the client. Performs appropriate 
-%%                                                                  serialization if the values in Data contain a BossRecord or a list of BossRecords.
-%% {json, Data::proplist(), Headers::proplist()}              200  Return Data as a JSON object to the client. Performs appropriate 
-%%                                                                  serialization if the values in Data contain a BossRecord or a list of BossRecords.
-%% {jsonp, Data::proplist()}                                  200  Returns Data as a JSONP method call to the client. 
-%%                                                                  Performs appropriate serialization if the values in Data contain a BossRecord 
-%%                                                                  or a list of BossRecords.                                                            
-%% {jsonp, Data::proplist(), Headers::proplist()}             200  Return Data as a JSON object to the client. Performs appropriate 
-%%                                                                 serialization if the values in Data contain a BossRecord or a list of BossRecords.
-%% {jsonp, Callback::string(), Data::proplist(), Headers::proplist()} 
-%%                                                            200  Return Data to the client as a JSONP method call (as above) 
-%%                                                                  while setting additional HTTP Headers.
-%% not_found                                                  404  Invoke the 404 File Not Found handler.
+%%           js                                                         200  The template will be rendered without any variables 
+%%                                                                            and served as Content-Type: application/javascript.
+%%           {js, Variables::proplist()}                                200  Variables will be passed into the associated Django template and 
+%%                                                                            the result will be served as Content-Type: application/javascript.
+%%           {js, Variables::proplist(), Headers::proplist()}           200  Variables will be passed into the associated Django template and 
+%%                                                                            the result will be served as Content-Type: application/javascript.
+%%                                                                            and Headers are HTTP headers you want to set.
+%%           {json, Data::proplist()}                                   200  Return Data as a JSON object to the client. Performs appropriate 
+%%                                                                            serialization if the values in Data contain a BossRecord or a list of BossRecords.
+%%           {json, Data::proplist(), Headers::proplist()}              200  Return Data as a JSON object to the client. Performs appropriate 
+%%                                                                            serialization if the values in Data contain a BossRecord or a list of BossRecords.
+%%           {jsonp, Data::proplist()}                                  200  Returns Data as a JSONP method call to the client. 
+%%                                                                            Performs appropriate serialization if the values in Data contain a BossRecord 
+%%                                                                            or a list of BossRecords.                                                            
+%%           {jsonp, Data::proplist(), Headers::proplist()}             200  Return Data as a JSON object to the client. Performs appropriate 
+%%                                                                            serialization if the values in Data contain a BossRecord or a list of BossRecords.
+%%           {jsonp, Callback::string(), Data::proplist(), Headers::proplist()} 
+%%                                                                      200  Return Data to the client as a JSONP method call (as above) 
+%%                                                                            while setting additional HTTP Headers.
 %% 
-%% {Code::integer(), Body::iolist(), Headers::proplist()}     Code Return an arbitary HTTP integer StatusCode along with a Body 
-%%                                                                  and additional HTTP Headers.
+%%           {Code::integer(), Body::iolist(), Headers::proplist()}     Code Return an arbitary HTTP integer StatusCode along with a Body 
+%%                                                                             and additional HTTP Headers.
 %%
 %% ---------------------------------------------------------------------------------------
-
-
-%% ===== Filter Config ======
-%% Filter module can be installed with the controller_filter_modules config option:
-%% {controller_filter_modules, [my_awesome_filter1, my_awesome_filter2]}
-%% Filters are applied in order. For a particular controller, you can override the default filter list with the following three functions:
-
-
-%% ===== SHORT NAME ======
-%% Setting a short name and default config value
-%% Filter modules can export two functions to set a short name for themselves and to provide a default config value:
-
-%% -module(my_awesome_filter).
-%% -export([config_key/0, config_default_value/0]).
-
-%% config_key() -> 'awesome'.
-%% config_default_value() -> [{awesomeness, 50}].
+%%
+%% ===== before filter ===
+%%
 
 
 before(Mvc, undefined, []) -> {ok, Mvc};
@@ -143,14 +130,17 @@ before(#mvc{route=#route{controller=Ctrl},reqCtx=ReqCtx}=Mvc, CfgFilters, Filter
     case lists:foldl(fun(F, {ok, Ctx}) -> 
                         try F:before_filter(CfgFilters,Ctx) catch C:E -> {error, Ctx, wf:error_page(C,E)} end;
                         (_, {error, _, _}=Err) -> Err;
-                        (_, Acc) -> Acc % redirect 
+                        (_, Acc) -> Acc 
                       end, {ok, ReqCtx},  NewFilters) of
     {ok, NewCtx} -> {ok, Mvc#mvc{reqCtx=NewCtx}};
     {error, NewCtx, Error} -> {error, Mvc#mvc{reqCtx=NewCtx}, Error} end.
 
-%% no related to before filter        
+
+
+       
 handler(Req, #mvc{route=#route{app=App,controller=Ctrl,action=Act,opts=O},reqCtx=ReqCtx}=Mvc) ->
-  R = try Ctrl:Act(wf:method(Req),[],ReqCtx) catch C:E -> {error,wf:error_page(C,E)} end,  
+  R = try Ctrl:Act(wf:method(Req),[],ReqCtx) catch C:E -> {error,wf:error_page(C,E)} end, 
+  wf:info(?MODULE, "~p~n", [R]), 
   try render(Req, Mvc, R) catch C1:E1 -> render_elements(Req, Mvc, wf:error_page(C1,E1)) end.
 
 render(Req, #mvc{pid=Pid,ctx=Ctx,ctx1=Ctx1}, #dtl{}=Elements) ->
@@ -161,7 +151,21 @@ render(Req, #mvc{pid=Pid,ctx=Ctx,ctx1=Ctx1}, {error,Elements}) ->
 render(Req, Mvc, {ok, Vars}) -> render(Req, Mvc, {ok, [], Vars});
 render(Req, #mvc{route=#route{app=App,controller=Ctrl,action=Act},reqCtx=ReqCtx}=Mvc, {ok, Headers, Vars}) ->
   Req2 = lists:foldl(fun({K,V},Rq) -> wf:header(K,V, Rq) end,Req, Headers++ctype(html)),
-  render_elements(Req2, Mvc, #dtl{file={App,Ctrl,Act,"_html"}, app=App, bindings=Vars++maps:to_list(ReqCtx)}).
+  render_elements(Req2, Mvc, #dtl{file={App,Ctrl,Act,"_html"}, app=App, bindings=Vars++maps:to_list(ReqCtx)});
+
+render(Req, Mvc, {redirect, Location}) -> render(Req, Mvc, {redirect, Location, []});
+render(Req, Mvc, {redirect, Location, Headers}) ->
+  Req2 = lists:foldl(fun({K,V},Rq) -> wf:header(K,V, Rq) end,Req, Headers++[{<<"Location">>,wf:to_binary(Location)}]), 
+  wf:state(status,302),
+  {ok, _ReqFinal} = wf:reply(wf:state(status), Req2);
+
+render(Req, Mvc, {moved, Location}) -> render(Req, Mvc, {moved, Location, []});
+render(Req, Mvc, {moved, Location, Headers}) ->
+  Req2 = lists:foldl(fun({K,V},Rq) -> wf:header(K,V, Rq) end, Req, Headers++[{<<"Location">>,wf:to_binary(Location)}]), 
+  wf:state(status,301),
+  {ok, _ReqFinal} = wf:reply(wf:state(status), Req2).
+
+
 
 
 ctype(Type) ->
