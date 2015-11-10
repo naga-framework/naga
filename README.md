@@ -1,4 +1,4 @@
-#Nāga: Erlang Web Framework (beta)
+Nāga: Erlang Web Framework (beta)
 =================================
 
 GOAL:
@@ -42,9 +42,9 @@ and drop it in your $PATH
 
 ## Create a Naga app:
 
-  mad integrate a small template engine for creating naga app
+  mad integrate a small template engine.
 
-    $ mad create name=<app_name> tpl=<tpl_name>
+    $ mad create name=<app_name> tpl=<tpl_name> port=<9001>
 
 ```bash
 mad create name=toto tpl=hello port=9000
