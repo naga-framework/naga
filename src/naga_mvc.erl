@@ -6,7 +6,7 @@
 -include_lib("n2o/include/wf.hrl").
 -include("naga.hrl").
 -compile (export_all).
--record(mvc,{route,pid,ctx,ctx1}).
+-record(mvc,{route,pid,ctx,ctx1,reqCtx}).
 
 transition(Actions) -> receive {'INIT',A} -> transition(A); {'N2O',Pid} -> Pid ! {actions,Actions} end.
 run(Req) ->
@@ -18,10 +18,14 @@ run(Req) ->
     Ctx1 = wf:fold(init,Ctx#cx.handlers,Ctx),
     wf:actions(Ctx1#cx.actions),
     wf:context(Ctx1),
-    #route{controller=Ctrl,action=Act} = Ctx1#cx.path,
-     case erlang:function_exported(Ctrl, Act, 3) of 
-        true -> handler(Req, #mvc{pid=Pid,route=Ctx1#cx.path, ctx=Ctx, ctx1=Ctx1});
-        false ->
+    case Ctx1#cx.path of #route{}=Route ->
+            #route{app=App,controller=Ctrl,action=Act} = Route,
+            case erlang:function_exported(Ctrl, Act, 3) of 
+                true  -> handler(Req, #mvc{pid=Pid,route=Route, ctx=Ctx, ctx1=Ctx1, reqCtx=reqCtx(Route)});
+                false ->
+                    Elements = try (Ctx1#cx.module):main() catch C:E -> wf:error_page(C,E) end,
+                    render_elements(Req, #mvc{pid=Pid,ctx=Ctx,ctx1=Ctx1}, Elements) end;
+         _->
             Elements = try (Ctx1#cx.module):main() catch C:E -> wf:error_page(C,E) end,
             render_elements(Req, #mvc{pid=Pid,ctx=Ctx,ctx1=Ctx1}, Elements) end.
 
@@ -43,8 +47,13 @@ set_cookies([{Name,Value,Path,TTL}|Cookies],Req)->
 %%    -> (3)render   -> {code,   headers,  body} *? hook {after}
 %%    -> (4)response => {code,   headers,  body} 
 
-handler(Req, #mvc{route=#route{app=App,controller=Ctrl,action=Act,opts=O}}=Mvc) ->
-  ReqCtx = #{ '_app' => App, '_controller'=>Ctrl, '_action'=>Act, session_id => wf:session_id()},
+reqCtx(#route{app=App,controller=Ctrl,action=Act}) -> 
+    #{ '_app' => App, '_controller'=>Ctrl, 
+       '_action'=>Act, '_lang' => ?CTX#cx.lang,
+       '_session_id' => wf:session_id()
+     }.
+
+handler(Req, #mvc{route=#route{app=App,controller=Ctrl,action=Act,opts=O},reqCtx=ReqCtx}=Mvc) ->
   Result = try Ctrl:Act(wf:method(Req),[],ReqCtx) catch C:E -> {error,wf:error_page(C,E)} end,  
   try render(Req, Mvc, Result) catch C1:E1 -> render_elements(Req, Mvc, wf:error_page(C1,E1)) end.
 
@@ -54,9 +63,9 @@ render(Req, #mvc{pid=Pid,ctx=Ctx,ctx1=Ctx1}, {error,Elements}) ->
     render_elements(Req, #mvc{pid=Pid,ctx=Ctx,ctx1=Ctx1}, Elements);
 
 render(Req, Mvc, {ok, Vars}) -> render(Req, Mvc, {ok, [], Vars});
-render(Req, #mvc{route=#route{app=App,controller=Ctrl,action=Act}}=Mvc, {ok, Headers, Vars}) ->
+render(Req, #mvc{route=#route{app=App,controller=Ctrl,action=Act},reqCtx=ReqCtx}=Mvc, {ok, Headers, Vars}) ->
   Req2 = lists:foldl(fun({K,V},Rq) -> wf:header(K,V, Rq) end,Req, Headers++ctype(html)),
-  render_elements(Req2, Mvc, #dtl{file={App,Ctrl,Act,"html"}, app=App, bindings=Vars}).
+  render_elements(Req2, Mvc, #dtl{file={App,Ctrl,Act,"_html"}, app=App, bindings=Vars++maps:to_list(ReqCtx)}).
 
 % % render json with erlydtl
 % render(Req, Mvc, {{json,view}, Vars}) -> render(Req, Mvc, {js, [], Vars});
