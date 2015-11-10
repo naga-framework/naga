@@ -4,7 +4,7 @@
 GOAL:
  - Keep it small, fast, less dependencies as much as possible, 
  - NO PMOD, 
- - Compiled module base for routing
+ - Compiled module for routing
  - Bring ChicagoBoss flavour to n2o framework.
  
 
