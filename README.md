@@ -1,13 +1,11 @@
-#Nāga: Erlang Web Framework (beta)
+Nāga: Erlang Web Framework (beta)
 =================================
 
-##NAGA == M, [V, C] + websocket on steroid (n2o), the M is up to you (boss_db, kvs, ...)
-
 GOAL:
- - keep it small, fast, less dependencies as much as possible, 
+ - Keep it small, fast, less dependencies as much as possible, 
  - NO PMOD, 
- - compiled module base for routing
- - bring ChicagoBoss flavour to n2o framework instead of bringing n2o to CB. (less code) 
+ - Compiled module for routing
+ - Bring ChicagoBoss flavour to n2o framework.
  
 
 # Requirements
@@ -44,9 +42,9 @@ and drop it in your $PATH
 
 ## Create a Naga app:
 
-  mad integrate a small template engine for creating naga app
+  mad integrate a small template engine.
 
-    $ mad create name=<app_name> tpl=<tpl_name>
+    $ mad create name=<app_name> tpl=<tpl_name> port=<9001>
 
 ```bash
 mad create name=toto tpl=hello port=9000
@@ -66,6 +64,10 @@ Writing toto/apps/toto/src/toto_routes.erl
 Writing toto/apps/toto/src/view/index/index.html
 Writing toto/apps/toto/src/view/error/404.html
 OK
+```  
+## start to develop
+
+```shell
 cd toto
 mad deps comp plan repl
-```  
+```
