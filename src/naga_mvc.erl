@@ -39,7 +39,7 @@ render_elements(Req, #mvc{pid=Pid,ctx=Ctx,ctx1=Ctx1}, Elements) ->
     Html = wf_render:render(Elements),
     Actions = wf:actions(),
     Pid ! {'INIT',Actions},
-    Ctx2 = wf:fold(finish,Ctx#cx.handlers,?CTX),
+    Ctx2 = wf:fold(finish,Ctx#cx.handlers,?CTX),   
     Req2 = wf:response(Html,set_cookies(wf:cookies(),Ctx2#cx.req)),
     %wf:info(?MODULE,"Cookies Req: ~p",[Req2]),
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2).
@@ -82,7 +82,7 @@ render(Req, #mvc{pid=Pid,ctx=Ctx,ctx1=Ctx1}, {error,Elements}) ->
 
 render(Req, Mvc, {ok, Vars}) -> render(Req, Mvc, {ok, [], Vars});
 render(Req, #mvc{route=#route{app=App,controller=Ctrl,action=Act},reqCtx=ReqCtx}=Mvc, {ok, Headers, Vars}) ->
-  Req2 = lists:foldl(fun({K,V},Rq) -> wf:header(K,V, Rq) end,Req, Headers++ctype(html)),
+  Req2 = lists:foldl(fun({K,V},Rq) -> wf:header(K,V, Rq) end,Req, Headers),
   render_elements(Req2, Mvc, #dtl{file={App,Ctrl,Act,"_html"}, app=App, bindings=Vars++maps:to_list(ReqCtx)});
 
 render(Req, Mvc, {redirect, Location}) -> render(Req, Mvc, {redirect, Location, []});
@@ -99,19 +99,37 @@ render(Req, Mvc, {moved, Location, Headers}) ->
 
 render(Req, Mvc, {action_other, #route{}=New}) -> 
    wf:info(?MODULE, "action other ~p ~n",[{New#route.controller,New#route.action}]),
-   handler(Req, Mvc#mvc{route=New}).
+   handler(Req, Mvc#mvc{route=New});
 
 % render(Req, Mvc#mvc{reqCtx=ReqCtx}, {render_other, #route{app=App,controller=Ctrl,action=Act}}) -> 
 %    wf:info(?MODULE, "render other ~p ~n",[{New#route.controller,New#route.action}]),
 %    render_elements(Req2, Mvc, #dtl{file={App,Ctrl,Act,"_html"}, app=App, bindings=maps:to_list(ReqCtx)}).
 
-ctype(Type) ->
-    case Type of
-        js   -> [{<<"Content-Type">>,<<"application/javascript; charset=UTF">>}];
-        html -> [{<<"Content-Type">>,<<"text/html; charset=UTF-8">>}];
-        xml  -> [{<<"Content-Type">>,<<"text/xml; charset=UTF-8">>}];
-        css  -> [{<<"Content-Type">>,<<"text/css; charset=UTF-8">>}];
-        json -> [{<<"Content-Type">>,<<"application/json; charset=UTF-8">>}];
-        txt  -> [{<<"Content-Type">>,<<"text/plain; charset=UTF-8">>}]
-    end.
+render(Req, Mvc, {json, Vars}) -> render(Req, Mvc, {json, Vars, []});
+render(Req, Mvc, {json, Vars, Headers}) -> render(Req, Mvc, {json, Vars, Headers, 200});
+render(Req, Mvc, {json, Vars, Headers, Status}) ->
+  Req2 = lists:foldl(fun({K,V},Rq) -> wf:header(K,V, Rq) end,Req, Headers++?CTYPE_JSON), 
+  Req3 = wf:response(wf:json(Vars),set_cookies(wf:cookies(),Req2)),
+  wf:state(status,Status),
+  %% FIXME: call finish
+  {ok, _ReqFinal} = wf:reply(wf:state(status), Req3);
+
+render(Req, Mvc, {{json,dtl}, Vars}) -> render(Req, Mvc, {{json,dtl}, Vars, []});
+render(Req, Mvc, {{json,dtl}, Vars, Headers}) -> render(Req, Mvc, {{json,dtl}, Vars, Headers, 200});
+render(Req, #mvc{route=#route{app=App,controller=Ctrl,action=Act},reqCtx=ReqCtx}=Mvc, {{json,dtl}, Vars, Headers, Status}) ->
+  Req2 = lists:foldl(fun({K,V},Rq) -> wf:header(K,V, Rq) end,Req, Headers++?CTYPE_JSON), 
+  wf:state(status,Status),
+  Json = wf_render:render(#dtl{file={App,Ctrl,Act,"_json"}, app=App, bindings=Vars++maps:to_list(ReqCtx)}),
+  Req3 = wf:response(Json,Req2),
+  {ok, _ReqFinal} = wf:reply(wf:state(status), Req3);
+
+render(Req, Mvc, {Status, Body, Headers}) when is_integer(Status)->
+  Req2 = lists:foldl(fun({K,V},Rq) -> wf:header(K,V, Rq) end,Req, Headers), 
+  Req3 = wf:response(Body,set_cookies(wf:cookies(),Req2)),
+  wf:state(status,Status),
+  %% FIXME: call finish
+  {ok, _ReqFinal} = wf:reply(wf:state(status), Req3).
+
+%{StatusCode::integer(), Body::iolist(), Headers::proplist()}
+
 
