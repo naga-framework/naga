@@ -77,9 +77,4 @@ done      {json, Data::proplist(), Headers::proplist(), Code}        200  Return
 
 
 
-===== 
-{% url action="view" %}
-{% url action="view" id="1234" %}
-{% url action="view" tag="funny" %}
-{% url action="view" tag="funny" author_name="saint-paul" %}
-{% url action="view" year="2009" month="08" %}
+===== before filter ===
