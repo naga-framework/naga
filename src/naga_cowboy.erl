@@ -11,7 +11,7 @@
 
 init(_Transport, Req, _Opts)     -> {ok, Req, #state{}}.
 terminate(_Reason, _Req, _State) -> ok.
-handle(Req, State)               -> {ok, NewReq} = naga_mvc:run(Req), {ok, NewReq, State}.
+handle(Req, State)               -> {ok, NewReq} = naga_mvc:run(Req, State), {ok, NewReq, State}.
 
 % Cowboy Bridge Abstraction
 
