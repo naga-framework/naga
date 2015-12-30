@@ -5,7 +5,7 @@
 -include_lib("nitro/include/nitro.hrl").
 -include_lib("n2o/include/wf.hrl").
 -include("naga.hrl").
--compile (export_all).
+-export([run/2,transition/1]).
 
 transition(Actions) -> receive {'INIT',A} -> transition(A); {'N2O',Pid} -> Pid ! {actions,Actions} end.
 run(Req, Opts) ->
