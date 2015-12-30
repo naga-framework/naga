@@ -17,13 +17,12 @@ run(Req, Opts) ->
     Ctx1 = wf:fold(init,Ctx#cx.handlers,Ctx),
     wf:actions(Ctx1#cx.actions),
     wf:context(Ctx1),
-    Elements = case Ctx1#cx.path of 
-                #{app:=App,controller:=C,action:=A,
-                  method:=M,
-                  params:=P} -> try handle(App,C,A,M,P) catch C:E -> wf:error_page(C,E) end;
-                           _ -> try (Ctx1#cx.module):main() catch C:E -> wf:error_page(C,E) end
+    Elements = case Ctx1#cx.path of              
+                #{}=R -> #{app:=App,controller:=C,action:=A,method:=M,params:=P}=R,
+                         try handle(App,C,A,M,P) catch C:E -> wf:error_page(C,E) end;
+                    _ -> try (Ctx1#cx.module):main() catch C:E -> wf:error_page(C,E) end
                end,
-    Html = wf_render:render(Elements),
+    Html = render(Elements),    
     Actions = wf:actions(),
     Pid ! {'INIT',Actions},
     Ctx2 = wf:fold(finish,Ctx#cx.handlers,?CTX),
@@ -35,33 +34,61 @@ set_cookies([],Req)-> Req;
 set_cookies([{Name,Value,Path,TTL}|Cookies],Req)->
     set_cookies(Cookies,wf:cookie_req(Name,Value,Path,TTL,Req)).
 
-handle(App,C,undefined,M,P) -> case erlang:function_exported(C, index, 3) of 
+handle(App,C,undefined,M,P) -> case erlang:function_exported(C,index,3) of 
                                     true -> handle(App,C,index,M,P); _-> C:main() end;
-handle(App,C,A,M,P) -> case before(App,C,req_ctx(App,C,A,M,P)) of
-                        {ok, Ctx} -> wf:info(?MODULE,"execute ~p ~p:~p(~p,~p,~p)",[App,C,A,M,P,Ctx]),
-                                     C:A(M,P,Ctx); 
-                        {error,E} -> error(E);
-                        {redirect, R} -> wf:redirect(R) end.
+handle(App,C,A,M,P)         -> case before(App,C,req_ctx(App,C,A,M,P)) of
+                                    {ok, Ctx} -> {C:A(M,P,Ctx),Ctx}; 
+                                    {error,E} -> error(E);
+                                    {redirect, R} -> wf:redirect(R) end.
 
 req_ctx(App,C,A,M,P)  -> #{'_app'        => App,
                            '_method'     => M,
                            '_controller' => C,
-                           '_action'     => A,
-                           '_params'     => P,
-                           '_lang'       => ?CTX#cx.lang,
-                           '_sid'        => wf:session_id()
-                        }.
+                           '_action'     => A
+                           %'_params'     => P
+                           %'_lang'       => ?CTX#cx.lang,
+                           %'_sid'        => wf:session_id()
+                          }.
 
 before(App,C,Ctx)   -> O = [], %%FIXME: filter config
                        G = wf:config(App,filter,[]),
-                       wf:info(?MODULE,"BEFORE FILTER ~p ~p",[App,G]),
                        Filters = case erlang:function_exported(C,before_filters,2) of 
                                       true -> C:before_filters(G,Ctx); _ -> G end,
-                       wf:info(?MODULE,"BEFORE FILTER ~p ~p",[App,G]),                                      
-                       Res = lists:foldr(fun(M, {ok,A}) -> case  erlang:function_exported(M,before_filter,2) 
-                                                           of true -> M:before_filter(O,A); _-> {ok, A} end;
+                       lists:foldr(fun(M, {ok,A}) -> 
+                                        case  erlang:function_exported(M,before_filter,2) of
+                                              true -> M:before_filter(O,A); _-> {ok, A} end;
                                       (M, {redirect,_}=R) -> R;
                                       (M, {error,_}=E) -> E
-                                   end, {ok,Ctx},Filters), 
-                       wf:info(?MODULE,"BEFORE CTX ~p",[Res]),                                                             
-                       Res.
+                                   end, {ok,Ctx},Filters).
+%%todo: middle, after filter?
+%%todo: render_other
+%%todo: action_other
+header([])        -> ok;
+header([{K,V}|T]) -> wf:header(K,V),header(T).
+
+render({{ok,V},Ctx})             -> render({ok,[],V});
+render({{ok,H,V},Ctx})           -> header(H),
+                                    #{'_app':=App,'_controller':=C,'_action':=A} = Ctx,
+                                    render(#dtl{file={App,C,A,"html"}, bindings=V++maps:to_list(Ctx)});
+render({{redirect,L},Ctx})       -> render({{redirect,L,[]},Ctx});
+render({{redirect,L,H},_})       -> header([H|{<<"Location">>,L}]),
+                                    wf:state(status,302),
+                                    render(#dtl{});
+render({{moved,L},Ctx})          -> render({{moved,L,[]},Ctx});
+render({{moved,L,H},_})          -> header([H|{<<"Location">>,L}]),
+                                    wf:state(status,301),
+                                    render(#dtl{});
+render({{json,V},Ctx})           -> render({{json,V,[]},Ctx});
+render({{json,V},Ctx})           -> render({{json,V,[],200},Ctx});
+render({{json,V,H,S},_})         -> header(H++?CTYPE_JSON),
+                                    wf:state(status,S),
+                                    wf:json(V);
+%% todo: render css,xml,js,txt via dtl?
+render({{{json,dtl},V},Ctx})     -> render({{json,V,[]},Ctx});
+render({{{json,dtl},V},Ctx})     -> render({{json,V,[],200},Ctx});
+render({{{json,dtl},V,H,S},Ctx}) -> header(H++?CTYPE_JSON),
+                                    wf:state(status,S),
+                                    #{'_app':=App,'_controller':=C,'_action':=A} = Ctx,
+                                    wf_render:render(#dtl{app=App,file={App,C,A,"json"},bindings=V++maps:to_list(Ctx)});
+render(#dtl{}=E)                 -> wf_render:render(E).
+
