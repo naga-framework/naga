@@ -66,7 +66,7 @@ before(App,C,Ctx)   -> O = [], %%FIXME: filter config
 header([])        -> ok;
 header([{K,V}|T]) -> wf:header(K,V),header(T).
 
-render({{ok,V},Ctx})             -> render({ok,[],V});
+render({{ok,V},Ctx})             -> render({{ok,[],V},Ctx});
 render({{ok,H,V},Ctx})           -> header(H),
                                     #{'_app':=App,'_controller':=C,'_action':=A} = Ctx,
                                     render(#dtl{file={App,C,A,"html"}, bindings=V++maps:to_list(Ctx)});
