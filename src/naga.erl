@@ -2,7 +2,7 @@
 -description('NAGA OTP Application Server').
 -behaviour(supervisor).
 -behaviour(application).
--export([start/2, stop/1, init/1]).
+-export([start/2, stop/1, init/1, watch/1]).
 -include("naga.hrl").
 -define(CHILD(I, Type, Args), {I, {I, start_link, Args}, permanent, 5000, Type, [I]}).
 
@@ -16,3 +16,5 @@ init([])   ->
                       ?CHILD(naga_load, worker, [])
 	                ] 
               }}.
+
+watch(App) -> naga_load:watch(App).

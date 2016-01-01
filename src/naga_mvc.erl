@@ -91,5 +91,5 @@ render({{{json,dtl},V,H,S},Ctx}) -> header(H++?CTYPE_JSON),
                                     #{'_app':=App,'_controller':=C,'_action':=A} = Ctx,
                                     wf_render:render(#dtl{app=App,file={App,C,A,"json"},bindings=V++maps:to_list(Ctx)});
 render({#dtl{}=E,_})             -> wf_render:render(E);                                    
-render(#dtl{}=E)                 -> wf_render:render(E).
+render(E)                        -> wf_render:render(E).
 
