@@ -5,54 +5,121 @@
 -compile(export_all).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {graphs}).
+-export([view_graph/1,app/1,
+        watch/1,unwatch/1,parents/1,deps/1]).
+-export([onload/1,onnew/2,topsort/1,source/1,is_view/1]).
+
+-record(state,{graphs=#{}}).
 
 start_link() -> gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 init(Apps) ->wf:info(?MODULE,"Starting naga load.",[]), 
              active_events:subscribe_onload({?MODULE,onload}), 
              active_events:subscribe_onnew({?MODULE,onnew}),
              {ok, #state{}}.
-handle_call(_Request, _From, State) -> {reply, ok, State}.
-handle_cast({add,App}, State) -> {noreply, State#state{graphs=view_graph(App)}};
-handle_cast({onload, Module}, State) -> {ok, N} = onload(Module, State),{noreply, N};
-handle_cast({onnew, Module}, State) -> {ok, N} = onnew(Module, State),{noreply, N};
-handle_cast(_Request, State) -> {noreply, State}.
-handle_info(Info, State) -> {noreply, State}.
-terminate(_Reason, _State) -> ok.
-code_change(_OldVsn, State, _Extra) -> {ok, State}.
+
+handle_call({parents, Module}, _From, State) -> {reply, parents(Module,State), State};
+handle_call({deps, Module}, _From, State)    -> {reply, deps(Module,State), State};
+handle_call({topsort, App}, _From, State)    -> {reply, topsort(App,State), State};
+handle_call(_Request, _From, State)          -> {reply, ok, State}.
+handle_cast({watch, App}, State)             -> {noreply, watch(App,State)};
+handle_cast({unwatch, App}, State)           -> {noreply, unwatch(App,State)};
+handle_cast({onload, Module}, State)         -> {ok, N} = onload(Module, State),{noreply, N};
+handle_cast({onnew, Module}, State)          -> {ok, N} = onnew(Module, State),{noreply, N};
+handle_cast(_Request, State)                 -> {noreply, State}.
+handle_info(Info, State)                     -> {noreply, State}.
+terminate(_Reason, _State)                   -> ok.
+code_change(_OldVsn, State, _Extra)          -> {ok, State}.
 
 onload(Module) -> gen_server:cast(?MODULE,{onload, Module}).
-onnew(Module) ->  gen_server:cast(?MODULE,{onnew, Module}).
+onnew(Module)  -> gen_server:cast(?MODULE,{onnew, Module}).
+watch(App)     -> gen_server:cast(?MODULE,{watch, App}).
+unwatch(App)   -> gen_server:cast(?MODULE,{unwatch, App}).
+parents(Module)-> gen_server:call(?MODULE,{parents, Module}).
+deps(Module)   -> gen_server:call(?MODULE,{deps, Module}).
+topsort(App)   -> gen_server:call(?MODULE,{topsort, App}).
 
+%App = myapp, {ok,Modules} = application:get_key(App,modules), [io:format("~p --> ~p~n",[M,naga_load:parents(M)])||M<-Modules].
+%App = myapp, {ok,Modules} = application:get_key(App,modules), [io:format("~p --> ~p~n",[M,naga_load:deps(M)])||M<-Modules].
 %FIXME: update graph, when depencies change -> add/remove include template, force recompile tpl
-onnew(Module, State) -> wf:info(?MODULE, "Receive ONNEW event: ~p~n", [Module]),{ok,State}.
-onload(Module, State)-> wf:info(?MODULE, "Receive ONLOAD event: ~p~n", [Module]),{ok,State}.
+onnew([Module]=E, State) -> 
+  wf:info(?MODULE, "Receive ONNEW event: ~p", [E]),
+  case is_view(Module) of false -> ok; true ->
+  wf:info(?MODULE, "IS VIEW: ~p -> : ~p", [Module,is_view(Module)]),          
+  wf:info(?MODULE, "APP: ~p -> : ~p", [Module,app(Module)]),  
+  wf:info(?MODULE, "SRC: ~p -> : ~p", [Module,source(Module)]),
+  wf:info(?MODULE, "PARENTS: ~p -> : ~p", [source(Module), parents(Module,State)]),
+  wf:info(?MODULE, "DEPS: ~p -> : ~p", [source(Module), deps(Module,State)]) end,
+  {ok,State}.
 
-%FIXME
-view_parents(G, View) -> digraph:in_neighbours(G,View).
-view_deps(G, View)    -> digraph:out_neighbours(G,View).
+onload([Module]=E, State)-> 
+  wf:info(?MODULE, "Receive ONLOAD event: ~p", [E]),
+  case is_view(Module) of false -> skip; true ->
+      case parents(Module,State) of [] -> skip;
+        Parents -> [compile(P)||P<-Parents] end end, 
+  %%FIXME: for now, delete,rebuild graph each time
+  % [begin {E, V1, V2, Label} = digraph:edge(G,E),{V1,V2} end|| E <- digraph:edges(G,V1)] 
+  App = app(Module),
+  NewState = watch(App,unwatch(App, State)),
+  {ok,NewState}.
+
+%FIXME: force compile
+compile(P) -> 
+  wf:info(?MODULE, "FIXME: FORCE COMPILE ~p", [P]),
+  ok.
+
+watch(App, #state{graphs=Graphs}=State) -> 
+  case maps:get(App, Graphs, undefined) of 
+    undefined -> State#state{graphs = Graphs#{App => view_graph(App)} }; 
+    G -> State end.
+
+unwatch(App, #state{graphs=Graphs}=State) -> 
+  wf:info(?MODULE,"~p",[Graphs]),
+  case maps:get(App, Graphs, undefined) of undefined -> State; 
+       G -> digraph:delete(G), State#state{graphs=maps:remove(App,Graphs)} end.
+
+parents(M, #state{graphs=Graphs}=State) ->  
+  case is_view(M) of 
+    false -> not_a_view; 
+    true -> case maps:get(app(M),Graphs, undefined) of undefined -> {error, graph_notfound};
+                 G -> digraph:in_neighbours(G,source(M)) end end.
+
+deps(M, #state{graphs=Graphs}=State) -> 
+  case is_view(M) of 
+    false -> not_a_view; 
+    true -> case maps:get(app(M),Graphs, undefined) of undefined -> {error, graph_notfound};
+                 G ->  digraph:out_neighbours(G,source(M)) end end.
+
+topsort(App, #state{graphs=Graphs}=State) -> 
+  G = maps:get(App,Graphs),  digraph_utils:topsort(G).
 
 view_graph(App) ->
-    Views = mad_naga:files(App, view),
-    {ok, Cwd} = file:get_cwd(),
+    Nodes = view_files(App),
+    {ok, Cwd} = file:get_cwd(),    
     G = digraph:new(),
-    [ digraph:add_vertex(G, N) || N <- Views ],
-    case all_edges(App, Views, Cwd) of [] -> []; Edges -> 
-        [digraph:add_edge(G, A, B) || {A, B} <- Edges], {App, G} end.
+    [ digraph:add_vertex(G, N) || {N,_} <- Nodes ],
+    case all_edges(App, Nodes, Cwd) of 
+        [] -> [];Edges -> [digraph:add_edge(G, A, B) || {A, B} <- Edges], {App, G} end,
+    G.
 
-all_edges(App, Files, Cwd)      -> all_edges(App, Files, Cwd, []).
-all_edges(_, [],_, Acc)         -> lists:flatten(Acc);
-all_edges(App, [H|T], Cwd, Acc) -> all_edges(App, T, Cwd, [edge(App, H, Cwd)|Acc]). 
+all_edges(App, Nodes)      -> all_edges(App, Nodes, []).
+all_edges(_, [], Acc)      -> lists:flatten(Acc);
+all_edges(App, [H|T], Acc) -> all_edges(App, T, [edge(App, H)|Acc]). 
 
-edge(App, File) -> {ok, Cwd} = file:get_cwd(), edge(App, File, Cwd).
-edge(App, File, Cwd) ->
-   Handler = mad_naga:modules(App, view),
-   SEP="/",
-   case  Handler:dependencies() of
-      [] -> [];
-      Deps ->[{File, lists:subtract(X, Cwd ++ SEP)}||{X,_} <- Deps] end.
+edge(App, {File,Module}) ->
+   case  Module:dependencies() of [] -> []; Deps ->[{File, X}||{X,_} <- Deps] end.
   
-all_nodes(App, Files) ->all_nodes(App, Files, []).
-all_nodes(_, [], Acc) -> Acc;
-all_nodes(App, [H|T], Acc) -> all_nodes(App, T, [node(App, H)|Acc]).
-node(App, File) -> {F, _} = (mad_naga:modules(App, File)):source(), F.
+view_files(App) ->
+  {ok, Modules} = application:get_key(bid,modules),
+  [{source(M),M}||M <- Modules, is_view(M)].
+
+is_view(M) ->
+  erlang:function_exported(M,dependencies,0) andalso 
+  erlang:function_exported(M,source,0) andalso
+  erlang:function_exported(M,render,0) andalso
+  erlang:function_exported(M,render,1) andalso
+  erlang:function_exported(M,render,2).
+
+source(M) -> {S, _} = M:source(), S.
+app(M) -> [_, "ebin", App |_] = lists:reverse(filename:split(code:which(M))), 
+          list_to_atom(App).
+
