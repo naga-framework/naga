@@ -17,10 +17,10 @@ init([])   ->
 	                ] 
               }}.
 
-apps() -> wf:config(naga,watch,[]).
-watch(App) -> naga_load:watch(App).
+apps()       -> wf:config(naga,watch,[]).
+watch(App)   -> naga_load:watch(App).
 unwatch(App) -> naga_load:unwatch(App).
-is_view(M) -> naga_load:is_view(M).
-source(M) -> naga_load:source(M).
-app(M) -> naga_load:app(M).
+is_view(M)   -> naga_load:is_view(M).
+source(M)    -> naga_load:source(M).
+app(M)       -> naga_load:app(M).
 
