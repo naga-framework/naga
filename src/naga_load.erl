@@ -6,7 +6,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([start_link/1,start_link/0]).
 -export([onload/1,onnew/2,topsort/1,watch/1,unwatch/1]).
--export([view_graph/1,app/1,parents/1,deps/1,source/1,is_view/1]).
+-export([view_graph/1,app/1,parents/1,deps/1,source/1,is_view/1,view_files/1]).
 -record(state,{graphs=#{}}).
 
 start_link() -> start_link([]).
