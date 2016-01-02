@@ -5,11 +5,8 @@
 -compile(export_all).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([start_link/1,start_link/0]).
-
--export([view_graph/1,app/1,
-        watch/1,unwatch/1,parents/1,deps/1]).
--export([onload/1,onnew/2,topsort/1,source/1,is_view/1]).
-
+-export([onload/1,onnew/2,topsort/1,watch/1,unwatch/1]).
+-export([view_graph/1,app/1,parents/1,deps/1,source/1,is_view/1]).
 -record(state,{graphs=#{}}).
 
 start_link() -> start_link([]).
@@ -17,7 +14,8 @@ start_link(A)-> gen_server:start_link({local, ?SERVER}, ?MODULE, A, []).
 init(Apps)   -> wf:info(?MODULE,"Starting naga load. watch ~p",[Apps]), 
                 active_events:subscribe_onload({?MODULE,onload}), 
                 active_events:subscribe_onnew({?MODULE,onnew}),
-                %fixme: watch apps after they started                
+                %fixme: watch apps after they started, doesn't mean here. 
+                %in dev mode               
                 {ok, #state{}}.
 
 handle_call({parents, Module}, _From, State) -> {reply, parents(Module,State), State};
@@ -41,25 +39,20 @@ parents(Module)-> gen_server:call(?MODULE,{parents, Module}).
 deps(Module)   -> gen_server:call(?MODULE,{deps, Module}).
 topsort(App)   -> gen_server:call(?MODULE,{topsort, App}).
 
-%App = myapp, {ok,Modules} = application:get_key(App,modules), [io:format("~p --> ~p~n",[M,naga_load:parents(M)])||M<-Modules].
-%App = myapp, {ok,Modules} = application:get_key(App,modules), [io:format("~p --> ~p~n",[M,naga_load:deps(M)])||M<-Modules].
-%FIXME: update graph, when depencies change -> add/remove include template, force recompile tpl
-onnew([Module]=E, State) -> wf:info(?MODULE, "Receive ONNEW event: ~p", [E]),{ok,State}.
+onnew(E, State) -> wf:info(?MODULE, "Receive ONNEW event: ~p", [E]),{ok,State}.
 onload([Module]=E, State)-> 
   wf:info(?MODULE, "Receive ONLOAD event: ~p", [E]),
   case is_view(Module) of false -> skip; true ->
       case parents(Module,State) of [] -> skip;
         Parents -> [compile(P)||P<-Parents] end end, 
-  %%FIXME: for now, delete,rebuild graph each time, small graph
+  %%FIXME: for now, delete,rebuild graph each time, small graph, fast enought
   % [begin {E, V1, V2, Label} = digraph:edge(G,E),{V1,V2} end|| E <- digraph:edges(G,V1)] 
   App = app(Module),
   NewState = watch(App,unwatch(App, State)),
   {ok,NewState}.
 
-compile(File) -> 
-  %FIXME: work 4 linux, macosx ?, window?
-  sh:run(["touch",File]),
-  ok.
+%FIXME: work 4 linux, macosx ?, window?
+compile(File) -> sh:run(["touch",File]), ok.
 
 watch([A|T], State) -> watch(T, watch(A,State));
 watch([], State) -> State;
