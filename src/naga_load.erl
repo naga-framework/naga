@@ -50,15 +50,15 @@ onload([Module]=E, State)->
   case is_view(Module) of false -> skip; true ->
       case parents(Module,State) of [] -> skip;
         Parents -> [compile(P)||P<-Parents] end end, 
-  %%FIXME: for now, delete,rebuild graph each time
+  %%FIXME: for now, delete,rebuild graph each time, small graph
   % [begin {E, V1, V2, Label} = digraph:edge(G,E),{V1,V2} end|| E <- digraph:edges(G,V1)] 
   App = app(Module),
   NewState = watch(App,unwatch(App, State)),
   {ok,NewState}.
 
-%FIXME: force compile
-compile(P) -> 
-  wf:info(?MODULE, "FIXME: FORCE COMPILE ~p", [P]),
+compile(File) -> 
+  %FIXME: work 4 linux, macosx ?, window?
+  sh:run(["touch",File]),
   ok.
 
 watch([A|T], State) -> watch(T, watch(A,State));
@@ -71,7 +71,6 @@ watch([], State) -> State;
 unwatch([A|T], State) -> unwatch(T, unwatch(A,State));
 unwatch([], State) -> State;
 unwatch(App, #state{graphs=Graphs}=State) -> 
-  wf:info(?MODULE,"~p",[Graphs]),
   case maps:get(App, Graphs, undefined) of undefined -> State; 
        G -> digraph:delete(G), State#state{graphs=maps:remove(App,Graphs)} end.
 
@@ -90,7 +89,6 @@ deps(M, #state{graphs=Graphs}=State) ->
 topsort(App, #state{graphs=Graphs}=State) -> 
   case maps:get(App,Graphs, undefined) of undefined -> {error, graph_notfound};
                  G ->  digraph_utils:topsort(G) end.
-  %G = maps:get(App,Graphs),  digraph_utils:topsort(G).
 
 view_graph(App) ->
     Nodes = view_files(App),
