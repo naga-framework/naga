@@ -4,6 +4,7 @@
 -define(SERVER, ?MODULE).
 -compile(export_all).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+-export([start_link/1,start_link/0]).
 
 -export([view_graph/1,app/1,
         watch/1,unwatch/1,parents/1,deps/1]).
@@ -11,11 +12,13 @@
 
 -record(state,{graphs=#{}}).
 
-start_link() -> gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
-init(Apps) ->wf:info(?MODULE,"Starting naga load.",[]), 
-             active_events:subscribe_onload({?MODULE,onload}), 
-             active_events:subscribe_onnew({?MODULE,onnew}),
-             {ok, #state{}}.
+start_link() -> start_link([]).
+start_link(A)-> gen_server:start_link({local, ?SERVER}, ?MODULE, A, []).
+init(Apps)   -> wf:info(?MODULE,"Starting naga load. watch ~p",[Apps]), 
+                active_events:subscribe_onload({?MODULE,onload}), 
+                active_events:subscribe_onnew({?MODULE,onnew}),
+                %fixme: watch apps after they started                
+                {ok, #state{}}.
 
 handle_call({parents, Module}, _From, State) -> {reply, parents(Module,State), State};
 handle_call({deps, Module}, _From, State)    -> {reply, deps(Module,State), State};
@@ -41,16 +44,7 @@ topsort(App)   -> gen_server:call(?MODULE,{topsort, App}).
 %App = myapp, {ok,Modules} = application:get_key(App,modules), [io:format("~p --> ~p~n",[M,naga_load:parents(M)])||M<-Modules].
 %App = myapp, {ok,Modules} = application:get_key(App,modules), [io:format("~p --> ~p~n",[M,naga_load:deps(M)])||M<-Modules].
 %FIXME: update graph, when depencies change -> add/remove include template, force recompile tpl
-onnew([Module]=E, State) -> 
-  wf:info(?MODULE, "Receive ONNEW event: ~p", [E]),
-  case is_view(Module) of false -> ok; true ->
-  wf:info(?MODULE, "IS VIEW: ~p -> : ~p", [Module,is_view(Module)]),          
-  wf:info(?MODULE, "APP: ~p -> : ~p", [Module,app(Module)]),  
-  wf:info(?MODULE, "SRC: ~p -> : ~p", [Module,source(Module)]),
-  wf:info(?MODULE, "PARENTS: ~p -> : ~p", [source(Module), parents(Module,State)]),
-  wf:info(?MODULE, "DEPS: ~p -> : ~p", [source(Module), deps(Module,State)]) end,
-  {ok,State}.
-
+onnew([Module]=E, State) -> wf:info(?MODULE, "Receive ONNEW event: ~p", [E]),{ok,State}.
 onload([Module]=E, State)-> 
   wf:info(?MODULE, "Receive ONLOAD event: ~p", [E]),
   case is_view(Module) of false -> skip; true ->
@@ -67,11 +61,15 @@ compile(P) ->
   wf:info(?MODULE, "FIXME: FORCE COMPILE ~p", [P]),
   ok.
 
-watch(App, #state{graphs=Graphs}=State) -> 
+watch([A|T], State) -> watch(T, watch(A,State));
+watch([], State) -> State;
+ watch(App, #state{graphs=Graphs}=State) -> 
   case maps:get(App, Graphs, undefined) of 
-    undefined -> State#state{graphs = Graphs#{App => view_graph(App)} }; 
+    undefined -> State#state{graphs = Graphs#{App => view_graph(App)}}; 
     G -> State end.
 
+unwatch([A|T], State) -> unwatch(T, unwatch(A,State));
+unwatch([], State) -> State;
 unwatch(App, #state{graphs=Graphs}=State) -> 
   wf:info(?MODULE,"~p",[Graphs]),
   case maps:get(App, Graphs, undefined) of undefined -> State; 
@@ -90,7 +88,9 @@ deps(M, #state{graphs=Graphs}=State) ->
                  G ->  digraph:out_neighbours(G,source(M)) end end.
 
 topsort(App, #state{graphs=Graphs}=State) -> 
-  G = maps:get(App,Graphs),  digraph_utils:topsort(G).
+  case maps:get(App,Graphs, undefined) of undefined -> {error, graph_notfound};
+                 G ->  digraph_utils:topsort(G) end.
+  %G = maps:get(App,Graphs),  digraph_utils:topsort(G).
 
 view_graph(App) ->
     Nodes = view_files(App),
