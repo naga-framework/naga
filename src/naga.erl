@@ -12,39 +12,49 @@
 tables()   -> [ ?MODULE ].
 opt()      -> [ set, named_table, { keypos, 1 }, public ].
 start(_,_) -> supervisor:start_link({local,naga},naga,[]).
-stop(_)    -> ok.
 init([])   -> [ ets:new(T,opt()) || T <- tables() ],
               { ok, { { one_for_one, 5, 10 }, 
 	                [	                  
-                      ?CHILD(naga_load, worker, [apps()])
+                    ?CHILD(naga_load, worker, [apps()])
 	                ] 
               }}.
 
-start(Apps) -> DispatchApps = dispatchApps(Apps),
-               AppsInfo = boot_apps(Apps),
-               ProtoOpts = [{env,[{applications, [Apps]}
-                                 ,{appsInfo, AppsInfo}                      	  
-                                 ,{dispatch, cowboy_router:compile(DispatchApps)}]},
-                            {middlewares, [naga_router, naga]}],
-               [start_listeners(App, ProtoOpts) || App <- Apps].
+stop(Apps) when is_list(Apps) -> [stop(App)||App<-Apps];
+stop(App)  -> case lists:member(App, wf:config(naga,watch,[])) of 
+                true  -> Listeners = wf:config(App,listeners,[]),
+                         [begin
+                            Ref = listener_name(X, App),
+                            wf:info(?MODULE, "stoping ~p:~s", [App, begin [P,_] = string:tokens(wf:to_list(Ref),"_"), P end]),
+                            cowboy:stop_listener(Ref)
+                          end || {X,_} <-Listeners],
+                          application:stop(App), ok;
+                false -> ok 
+              end.
 
-dispatchApps(Apps)-> lists:foldr(fun(App,Acc) -> 
-                                      [{domains(App),                                         
-                                         dispatch(service,   App) ++  %% TODO: websocket service, async server
-                                         dispatch(revproxy,  App) ++  %% TODO: reverse proxy
-                                         dispatch(fcgi,      App) ++  %% TODO: memcache protocol (ranch?)
-                                         dispatch(rest,      App) ++  %% TODO: 
-                                         dispatch(static,    App) ++  %% TOTO: dispatch special files.
-                                         [{base_url(App, "/[...]"), {app,App}, []}]
-                                      }] ++ Acc
+start(Apps)-> DispatchApps = dispatchApps(Apps),
+              AppsInfo = boot_apps(Apps),
+              ProtoOpts = [{env,[{applications, [Apps]}
+                                 ,{appsInfo, AppsInfo}                      	  
+                                 ,{dispatch, cowboy_router:compile(DispatchApps)}
+                                ]}],
+              [start_listeners(App, ProtoOpts) || App <- Apps].
+
+dispatchApps(Apps)-> lists:foldr(fun(App,Acc) ->                                       
+                        lists:foldr(fun(Domain,Bcc) ->
+                                      [{Domain, dispatch(App)}] ++ Bcc 
+                                     end, [], domains(App)) ++ Acc
                                  end, [], Apps).
-dispatch(App)     -> [{'_',
-						            dispatch(route,     App) ++  %% TODO: from dispatch file				
-	                      dispatch(controller,App) ++  
-	                      dispatch(view,      App) ++                                 
-	                      dispatch(doc,       App) ++  %% TODO                    
-	                      dispatch(default,   App)
-                     }].
+
+dispatch(App)     ->   dispatch(service,   App) ++  %% TODO: websocket service, async server
+                       dispatch(revproxy,  App) ++  %% TODO: reverse proxy
+                       dispatch(fcgi,      App) ++  %% TODO: memcache protocol (ranch?)
+                       dispatch(rest,      App) ++  %% TODO: 
+                       dispatch(static,    App) ++  %% TOTO: dispatch special files.
+                       dispatch(route,     App) ++  %% TODO: from dispatch file        
+                       dispatch(controller,App) ++  
+                       dispatch(view,      App) ++                                 
+                       dispatch(doc,       App) ++  %% TODO                    
+                       dispatch(default,   App).
 
 start_listeners(App, ProtoOpts) ->
     case wf:config(App, listeners, []) of
@@ -52,49 +62,27 @@ start_listeners(App, ProtoOpts) ->
               listener(App, ?DEFAULT_LISTENER, ProtoOpts, []);
         Listeners -> listener(App, Listeners, ProtoOpts, []) end.
 
-%%% -------------- cowboy middleware 
 
-execute(Req, Env) ->
-    {_, Handler}     = lists:keyfind(handler, 1, Env),
-    {_, HandlerOpts} = lists:keyfind(handler_opts, 1, Env),
-    wf:info(?MODULE, "Handler ~p",[Handler]),
-    wf:info(?MODULE, "HandlerOpts ~p",[HandlerOpts]),
-    try Handler:init(Req, HandlerOpts) of
-        {ok, Req2, State} ->
-            Result = terminate(normal, Req2, State, Handler),
-            {ok, Req2, [{result, Result}|Env]};
-        {fcgi_static, Req2, {FilePath,_,_Extra}=State} ->
-            Env2 = lists:keyreplace(handler, 1, Env, {handler, cowboy_static}),
-            _Env3 = lists:keyreplace(handler_opts, 1, Env, {handler_opts, {file, FilePath}}),
-            cowboy_rest:upgrade(Req2, Env2, cowboy_static, State, infinity, run);
-        {Mod, Req2, State} ->
-            Mod:upgrade(Req2, Env, Handler, State, infinity, run);
-        {Mod, Req2, State, hibernate} ->
-            Mod:upgrade(Req2, Env, Handler, State, infinity, hibernate);
-        {Mod, Req2, State, Timeout} ->
-            Mod:upgrade(Req2, Env, Handler, State, Timeout, run);
-        {Mod, Req2, State, Timeout, hibernate} ->
-            Mod:upgrade(Req2, Env, Handler, State, Timeout, hibernate)
-    catch Class:Reason ->
-            Stacktrace = erlang:get_stacktrace(),
-            cowboy_req:maybe_reply(Stacktrace, Req),
-            terminate({crash, Class, Reason}, Req, HandlerOpts, Handler),
-            erlang:Class([
-                          {reason, Reason},
-                          {mfa, {Handler, init, 2}},
-                          {stacktrace, Stacktrace},
-                          {req, cowboy_req:to_list(Req)},
-                          {opts, HandlerOpts}
-                         ])
-    end.
-
-terminate(Reason, Req, State, Handler) ->
-	cowboy_handler:terminate(Reason, Req, State, Handler).
-
-%%% ----- internal function 
 listener_name(Type,App) -> wf:atom([Type,App]).
 
 listener(_,[], _,Acc) -> Acc;
+listener(App, [{spdy, Opts}|T], ProtoOpts, Acc) ->
+    Listener    = listener_name(spdy,App),
+    Ip          = proplists:get_value(ip, Opts, {0, 0, 0, 0}),
+    Port        = proplists:get_value(port, Opts, ?DEFAULT_HTTPS_PORT),
+    NbAcceptors = proplists:get_value(acceptors, Opts, ?DEFAULT_ACCEPTOR_PROCESSES),
+    SslOpts     = proplists:get_value(ssl_opts, Opts, ?DEFAULT_SSL_OPTS),
+     TransOpts  = [{ip, Ip},{port, Port}|SslOpts],
+    case cowboy:start_spdy(Listener, NbAcceptors, TransOpts, ProtoOpts) of
+        {ok, Pid} ->
+            wf:info(?MODULE, "starting SPDY server ~p at ~p:~p",[App, Ip,Port]),
+            listener(App, T, ProtoOpts, [{Listener, Pid, TransOpts, ProtoOpts}|Acc]); 
+        {error,{{_,{_,_,{_,_}}},_}} = Err -> 
+            io:format("Can't start SPDY Server: ~p ~p\r\n",[Err, {App, Ip, Port}]);
+        X -> 
+            io:format("Unknown Error: ~p\r\n",[X]), halt(abort,[])
+    end;
+
 listener(App, [{https, Opts}|T], ProtoOpts, Acc) ->
     Listener    = listener_name(https,App),
     Ip          = proplists:get_value(ip, Opts, {0, 0, 0, 0}),
@@ -134,13 +122,18 @@ unwatch(App)      -> naga_load:unwatch(App).
 is_view(M)        -> naga_load:is_view(M).
 source(M)         -> naga_load:source(M).
 app(M)            -> naga_load:app(M).
+route_file(App)   -> filename:join([priv_dir(App), lists:concat([wf:atom([App]), ".routes"])]).
 
 static_prefix(App)-> wf:config(App,static_prefix,"/static").
+static_url(App,Uri)-> string:join([static_prefix(App),Uri],"").
+
 doc_prefix(App)   -> wf:config(App,doc_prefix,   "/doc").
+doc_url(App,Uri)  -> string:join([doc_prefix(App),Uri],"").
+
 rest_prefix(App)  -> wf:config(App,rest_prefix,  "/rest").
 fcgi_prefix(App)  -> wf:config(App,fcgi_prefix,  "/fcgi").
 n2o_prefix(App)   -> wf:config(App,n2o_prefix,   "/ws").
-n2o_url(App,Uri)  -> string:join([wf:config(App,n2o_prefix,"/ws"),Uri],"").
+n2o_url(App,Uri)  -> string:join([n2o_prefix(App),Uri],"").
 locale(App)       -> wf:config(App,static_prefix,none).
 
 base_url(App)     -> wf:config(App,base_url,"/").
@@ -152,7 +145,7 @@ files(controller,App)  -> [{F, module(F)}|| F <- mad_compile:files(source_dir(Ap
 files(view,App)        -> naga_load:view_files(App).
 module(F)              -> wf:atom([filename:basename(F, ".erl")]).
 
-domains(App)  -> case wf:config(App, domains, '_') of all -> '_'; E -> E end.
+domains(App)  -> case wf:config(App, domains, ['_']) of all -> ['_']; E -> E end.
 mime()        -> [{mimetypes,cow_mimetypes,all}].
 is_dir(D)     -> case filelib:is_dir(D) of true -> D; false -> false end.
 priv_dir(App) ->  {ok,Cwd} = file:get_cwd(), 
@@ -162,9 +155,7 @@ priv_dir(App) ->  {ok,Cwd} = file:get_cwd(),
                                               false -> {error, notfound};
                                               DepsDir -> DepsDir end;
                                   AppsDir -> AppsDir end;
-                   Dir       -> D = filename:join(filename:split(Dir) -- filename:split(Cwd)),
-                                error_logger:info_msg("Dir ~p~n",[D]),D
-                                 
+                   Dir       -> filename:join(filename:split(Dir) -- filename:split(Cwd))
                   end.
 
 want_session(M)  -> E = M:module_info(attributes), proplists:get_value(session,E,true). %% by default true
@@ -183,37 +174,59 @@ actions(M)       -> A = M:module_info(attributes),
                     %% maybe can use dializer here to find out 
 is_steroid(M)    -> erlang:function_exported(M,event,1).
 
-url(App,M,main) -> base_url(App,string:join(["/",wf:to_list(M)--wf:to_list([App,"_"]),"/[...]"],""));
-url(App,M,index)-> base_url(App,string:join(["/",wf:to_list(M)--wf:to_list([App,"_"]),"/[...]"],""));
-url(App,M,A)    -> base_url(App,string:join(["/",wf:to_list(M)--wf:to_list([App,"_"]),"/",wf:to_list(A),"/[...]"],"")).
-url(App,M)      -> case string:tokens(wf:to_list(M), "_") of
-                    [_,"mail","view",Name,Ext|_] -> base_url(App,"/"++Name++"."++Ext);
-                    _ -> {ok,Cwd} = file:get_cwd(), 
-                         F = naga:source(M),                         
-                         (F -- Cwd) -- ("/" ++ base_dir(App)++"/src/view")
-                   end. 
+split(F)         -> filename:split(F).
+url(App,M,main)  -> base_url(App,string:join(["/",wf:to_list(M)--wf:to_list([App,"_"]),"/[...]"],""));
+url(App,M,index) -> base_url(App,string:join(["/",wf:to_list(M)--wf:to_list([App,"_"]),"/[...]"],""));
+url(App,M,A)     -> base_url(App,string:join(["/",wf:to_list(M)--wf:to_list([App,"_"]),"/",wf:to_list(A),"/[...]"],"")).
+url(App,M)       -> case string:tokens(wf:to_list(M), "_") of
+                     [_,"mail","view",Name,Ext|_] -> base_url(App,"/"++Name++"."++Ext);
+                     _ -> {ok,Cwd} = file:get_cwd(), 
+                         F=(((split(naga:source(M)--Cwd)--split(base_dir(App)))--[sep()])--["src","view"]),
+                         base_url(App,"/"++string:join(F,"/"))
+                    end. 
 
-dispatch(static,App)    -> lists:foldr(fun({Url,dir,App}, Acc)  -> [{Url, n2o_static, {dir, priv_dir(App), mime()}}|Acc]
-                              %({Url,file,App}, Acc) -> [{Url, cowboy_static, {file, }}|Acc]
-                               end, [], wf:config(App, static, []));
+code_url(App, Code)     -> wf:to_list(Code).
+handler(App, H)         -> H.
+                           
+dispatch(static,App)    -> [{ base_url(App,static_url(App,"/[...]")), n2o_static,  {dir, filename:join([priv_dir(App),"static"]), mime()}}] ++
+                           lists:foldr(fun({Url,dir,App}, Acc)  -> [{Url, n2o_static, {dir, priv_dir(App), mime()}}|Acc]
+                                         %FIXME:
+                                         %({Url,file,App}, Acc) -> [{Url, cowboy_static, {file, }}|Acc]
+                                       end, [], wf:config(App, static, []));
 
 dispatch(controller,App)-> Controllers = files(controller,App),
                             lists:foldr(fun({F,M},Acc) ->
-                                  Actions = actions(M),
-                                  [{url(App,M,A), {controller,App,M,A,N,want_session(M),is_steroid(M)}, []} || {A,N} <- Actions]++Acc
+                                  [{url(App,M,A), naga_cowboy,{controller,App,M,A,N,want_session(M),is_steroid(M)}} || {A,N} <- actions(M)]++Acc
                                end, [], Controllers);
 
 dispatch(view,App)      -> Views = files(view, App),                             
                              lists:foldr(fun({F,M},Acc) ->                                  
-                                  [{url(App,M), {view,App,M,render,0,false,false}, []}]++Acc
+                                  [{url(App,M), naga_cowboy, {view,App,M,render,0,false,false}}]++Acc
                                end, [], Views);
 
 dispatch(default,App)   -> [{ base_url(App,n2o_url(App,"/:controller/:action/[...]")), n2o_stream,  [] },
-                            { base_url(App,n2o_url(App,"/ws/:controller/[...]")),      n2o_stream,  [] },
-                            { base_url(App,n2o_url(App,"/ws/[...]")),                  n2o_stream,  [] },
+                            { base_url(App,n2o_url(App,"/:controller/[...]")),         n2o_stream,  [] },
+                            { base_url(App,n2o_url(App,"/[...]")),                     n2o_stream,  [] },
                             { base_url(App,"/:controller/:action/[...]"),              naga_cowboy, [] },
                             { base_url(App,"/:controller/[...]"),                      naga_cowboy, [] },
                             { base_url(App,"/[...]"),                                  naga_cowboy, [] }];
+
+dispatch(doc,App)       -> [{ base_url(App,doc_url(App,"/[:docname]")),  naga_doc, [{doc,App}] }];
+
+dispatch(route,App)     -> File = route_file(App),
+                           case file:consult(route_file(App)) of
+                             {ok, Routes} -> 
+                                lists:foldr(fun
+                                              ({Code, Handler, Opts}, Acc) when is_integer(Code) ->
+                                                [{base_url(App,code_url(App,Code)), handler(App,Handler), Opts}] ++ Acc;                                   
+                                              ({Url, Handler, Opts},Acc) -> 
+                                                [{base_url(App,Url), handler(App,Handler), Opts}] ++ Acc                                   
+                                            end, 
+                                  [], Routes);
+                             {error,_} = Err -> 
+                                wf:error(?MODULE, "Missing or invalid NAGE routes file: ~p~n~p~n", 
+                                [File, Err]), [] 
+                           end;
 
 dispatch(_,App)         -> [].
 
@@ -222,7 +235,7 @@ boot_apps(Apps)        -> boot_app(Apps, []).
 boot_app([], AppsInfo) -> AppsInfo;
 boot_app([App|T], Acc) -> {ok, Modules} = application:get_key(App,modules), 
                           [code:ensure_loaded(M)||M<-Modules],
-                          AppInfo = #{ dispatch     => dispatch(App),   
+                          AppInfo = #{ %dispatch     => cowboy_router:compile(dispatch(App)),   
                                        locale       => locale(App),
                                        base_url     => base_url(App),
                                        static_prefix=> static_prefix(App),
@@ -236,7 +249,7 @@ boot_app([App|T], Acc) -> {ok, Modules} = application:get_key(App,modules),
                           boot_app(T, [{App, AppInfo}|Acc]).
 
 boot_fcgi(App)       -> boot_fcgi(App, wf:config(App, fcgi_enabled, false)).
-boot_fcgi(App, false)-> skip;
+boot_fcgi(App, false)-> undefined;
 boot_fcgi(App, true) -> Fcgi     = wf:config(App, fcgi_exe, 'php-fpm'),    
                         FcgiHost = wf:config(App, fcgi_host, localhost),    
                         FcgiPort = wf:config(App, fcgi_port, 33000),  
