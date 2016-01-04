@@ -19,7 +19,7 @@ run(Req, []) ->
     wf:actions(Ctx1#cx.actions),
     wf:context(Ctx1),
     Elements = case Ctx1#cx.path of              
-                #{}=R -> #{app:=App,controller:=Module,action:=A,method:=M,params:=P, bindings:=B}=R,
+                #{}=R -> #{application:=App,module:=Module,action:=A,method:=M,params:=P,bindings:=B}=R,
                          try handle(App,Module,A,M,P,B) catch C:E -> wf:error_page(C,E) end;
                     _ -> try (Ctx1#cx.module):main() catch C:E -> wf:error_page(C,E) end
                end,
@@ -31,9 +31,12 @@ run(Req, []) ->
     %wf:info(?MODULE,"Cookies Req: ~p",[Req2]),
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2);
 
-run(Req, {controller,App,Module,Act,A,WantSession,true}) ->
+run(Req, #route{type=controller,is_steroid=true}=Route) ->
+    #route{application=App,module=Module,action=Act,arity=A,
+           want_session=WantSession}=Route,
     wf:state(status,200),
     Pid = spawn(fun() -> transition([]) end),
+    %FIXME: websocket port 
     wf:script(["var transition = {pid: '", wf:pickle(Pid), "', ",
                 "port:'", wf:to_list(wf:config(n2o,websocket_port,wf:config(n2o,port,8000))),"'}"]),
     Ctx = wf:init_context(Req),
@@ -54,10 +57,9 @@ run(Req, {controller,App,Module,Act,A,WantSession,true}) ->
     Req2 = wf:response(Html,set_cookies(wf:cookies(),Ctx2#cx.req)),
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2);
 
-run(Req, {controller,App,Module,Act,A,WantSession,false}) ->
-    {M, _} = cowboy_req:method(Req),
-    {P, _} = cowboy_req:path_info(Req),
-    {B, _} = cowboy_req:bindings(Req),
+run(Req, #route{type=controller,is_steroid=false}=Route) ->
+    #route{application=App,module=Module,action=Act,arity=A,
+           want_session=WantSession} = Route,
     wf:state(status,200),
     Ctx = wf:init_context(Req),
     Ctx1 = init(Ctx, false, WantSession),
@@ -74,11 +76,12 @@ run(Req, {controller,App,Module,Act,A,WantSession,false}) ->
     Req2 = wf:response(Html,set_cookies(wf:cookies(),Ctx2#cx.req)),
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2);
 
-run(Req, {view,_,Module,_,_,_,_}) ->
+run(Req, #route{type=view,module=Module}) ->
     wf:state(status,200),   
     {ok,Html} = Module:render(),    
     Req2 = wf:response(Html,Req),
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2).
+
 
 no_session(L)-> lists:keydelete(session,1,L).
 no_route(L)  -> lists:keydelete(route,1,L).

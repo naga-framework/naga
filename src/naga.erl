@@ -44,8 +44,8 @@ dispatchApps(Apps)-> lists:foldr(fun(App,Acc) ->
                                      end, [], domains(App)) ++ Acc
                                  end, [], Apps).
 
-dispatch(App)     -> Rules = [service, revproxy,fcgi, rest, static,
-                              route,controller,view, doc, default],
+dispatch(App)     -> Rules = [service, revproxy, fcgi, rest, static, route,
+                              controller,view, doc, default],
                      lists:foldr(fun(Rule,Acc)-> dispatch(Rule,App) ++ Acc end,[],
                                  wf:config(App,rules,Rules)).
 
@@ -145,9 +145,34 @@ url(App,M)       -> case string:tokens(wf:to_list(M), "_") of
                          base_url(App,"/"++string:join(F,"/"))
                     end. 
 
-code_url(App, Code)     -> base_url(App,wf:to_list(["$_",Code,"_$"])).
-handler(App, H)         -> H.
-                           
+get_kv(K, Opts, Default)-> V = proplists:get_value(K, Opts, Default),
+                           KV = {K, V}, {KV, Opts -- [KV]}.
+module(A,C)         -> wf:atom([A,C]).
+controller(A,M)     -> wf:atom([wf:to_list(M) -- wf:to_list([A,"_"])]).
+code_url(Code)      -> wf:to_list(["/$_",Code,"_$"]).
+handler(App,H) when is_list(H) -> naga_cowboy;
+handler(App,H) when is_atom(H) -> H.
+
+opts(App, H, Opts) 
+        when is_list(H) -> {{application,App1},O } = get_kv(application,H,App),
+                           {{controller,C},    O1} = get_kv(controller,O,index),
+                           {{action,Act},      P } = get_kv(action,O1,index), 
+                           M = module(App1,C),
+                           #route{type=controller,
+                                  application=App1,
+                                  controller=C,
+                                  module=M,
+                                  action=Act,
+                                  arity=3,
+                                  want_session=want_session(M),
+                                  is_steroid=is_steroid(M),
+                                  params=P,
+                                  opts=Opts};
+
+opts(App, H, Opts) 
+        when is_atom(H) -> Opts.
+
+%{Type,App,Module,Action,Arity,want_session(M),is_steroid(M)}
 dispatch(static,    App)-> [{ base_url(App,static_url(App,"/[...]")), n2o_static,  {dir, filename:join([priv_dir(App),"static"]), mime()}}] ++
                            lists:foldr(fun({Url,dir,App}, Acc)  -> 
                                             [{Url, n2o_static, {dir, priv_dir(App), mime()}}|Acc]
@@ -157,11 +182,24 @@ dispatch(static,    App)-> [{ base_url(App,static_url(App,"/[...]")), n2o_static
                                        end, [], wf:config(App, static, []));
 dispatch(controller,App)-> Controllers = files(controller,App),
                             lists:foldr(fun({F,M},Acc) ->
-                                  [{url(App,M,A), naga_cowboy,{controller,App,M,A,N,want_session(M),is_steroid(M)}} || {A,N} <- actions(M)]++Acc
+                                  [{url(App,M,A), naga_cowboy,#route{type=controller,
+                                                                     application=App,
+                                                                     controller=controller(App,M),
+                                                                     module=M,
+                                                                     action=A,
+                                                                     arity=N,
+                                                                     want_session=want_session(M),
+                                                                     is_steroid=is_steroid(M)}} || {A,N} <- actions(M)]++Acc
                                end, [], Controllers);
 dispatch(view,      App)-> Views = files(view, App),                             
                              lists:foldr(fun({F,M},Acc) ->                                  
-                                  [{url(App,M), naga_cowboy, {view,App,M,render,0,false,false}}]++Acc
+                                  [{url(App,M), naga_cowboy, #route{type=view,
+                                                                    application=App,
+                                                                    module=M,
+                                                                    action=render,
+                                                                    arity=0,
+                                                                    want_session=false,
+                                                                    is_steroid=false}}]++Acc
                                end, [], Views);
 dispatch(default,   App)-> [{ base_url(App,n2o_url(App,"/:controller/:action/[...]")), n2o_stream,  [] },
                             { base_url(App,n2o_url(App,"/:controller/[...]")),         n2o_stream,  [] },
@@ -169,17 +207,17 @@ dispatch(default,   App)-> [{ base_url(App,n2o_url(App,"/:controller/:action/[..
                             { base_url(App,"/:controller/:action/[...]"),              naga_cowboy, [] },
                             { base_url(App,"/:controller/[...]"),                      naga_cowboy, [] },
                             { base_url(App,"/[...]"),                                  naga_cowboy, [] }];
-dispatch(doc,       App)-> [{ base_url(App,doc_url(App,"/[:docname]")),                naga_doc,    [{doc,App}] }];
+dispatch(doc,       App)-> [{ base_url(App,doc_url(App,"/[:docname]")),                naga_cowboy, [#route{type=doc,application=App}]}];
 dispatch(route,     App)-> File = route_file(App),
                            case file:consult(route_file(App)) of
-                             {ok, Routes} -> 
+                             {ok, Routes} ->    
                                 lists:foldr(fun
                                               ({Code, Handler, Opts}, Acc) when is_integer(Code) ->
-                                                [{base_url(App,code_url(App,Code)), handler(App,Handler), Opts}] ++ Acc;                                   
+                                                [{base_url(App,code_url(Code)), handler(App,Handler), opts(App,Handler,Opts)}] ++ Acc;                                   
                                               ({Url, Handler, Opts},Acc) -> 
-                                                [{base_url(App,Url), handler(App,Handler), Opts}] ++ Acc                                   
+                                                [{base_url(App,Url), handler(App,Handler), opts(App,Handler,Opts)}] ++ Acc                                   
                                             end, 
-                                  [], Routes);
+                                  [], lists:flatten(Routes));
                              {error,_} = Err -> 
                                 wf:error(?MODULE, "Missing or invalid NAGE routes file: ~p~n~p~n", 
                                 [File, Err]), [] 

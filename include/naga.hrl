@@ -29,9 +29,16 @@
 -define(CTYPE_TXT,  [{<<"Content-Type">>,<<"text/plain; charset=UTF-8">>}]).
 -define(CTYPE_DFT,  ?CTYPE_TXT).
 
-
-
--record(route, {app, controller, action, opts}).
-
+-record(route,{type        =[], 
+	           application =[],
+	           controller  =index,
+	           module      =[],
+	           action      =index,
+	           arity       =3,
+	           want_session=true,
+	           is_steroid  =false,
+	           params      =[],
+	           opts        =[]
+	          }).                           
 
 -endif.
