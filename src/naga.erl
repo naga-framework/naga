@@ -34,7 +34,7 @@ stop(App)  -> case lists:member(App, wf:config(naga,watch,[])) of
 
 start(Apps)-> DispatchApps = dispatchApps(Apps),
               AppsInfo     = boot_apps(Apps),
-              ProtoOpts    = [{env,[{applications, [Apps]},{appsInfo, AppsInfo}                      	  
+              ProtoOpts    = [{env,[{applications, Apps},{appsInfo, AppsInfo}                      	  
                                    ,{dispatch, cowboy_router:compile(DispatchApps)}]}],
               [start_listeners(App, ProtoOpts) || App <- Apps].
 
@@ -44,7 +44,7 @@ dispatchApps(Apps)-> lists:foldr(fun(App,Acc) ->
                                      end, [], domains(App)) ++ Acc
                                  end, [], Apps).
 
-dispatch(App)     -> Rules = [service, revproxy, fcgi, rest, static, route,
+dispatch(App)     -> Rules = [service, revproxy, fcgi, rest, route,
                               controller,view, doc, default],
                      lists:foldr(fun(Rule,Acc)-> dispatch(Rule,App) ++ Acc end,[],
                                  wf:config(App,rules,Rules)).
@@ -56,8 +56,9 @@ start_listeners(App, ProtoOpts) ->
         Listeners -> listener(App, Listeners, ProtoOpts, []) end.
 
 listener_name(Type,App) -> wf:atom([Type,App]).
+
 listener(_,[], _,Acc)   -> Acc;
-listener(App, [{http=Proto, Opts}|T], ProtoOpts, Acc) ->
+listener(App, [{Proto, Opts}|T], ProtoOpts, Acc) ->
     Listener    = listener_name(Proto,App),
     Ip          = proplists:get_value(ip, Opts, {0, 0, 0, 0}),
     Port        = proplists:get_value(port, Opts, ?DEFAULT_HTTP_PORT),
@@ -141,7 +142,7 @@ url(App,M,A)     -> base_url(App,string:join(["/",wf:to_list(M)--wf:to_list([App
 url(App,M)       -> case string:tokens(wf:to_list(M), "_") of
                      [_,"mail","view",Name,Ext|_] -> base_url(App,"/"++Name++"."++Ext);
                      _ -> {ok,Cwd} = file:get_cwd(), 
-                         F=(((split(naga:source(M)--Cwd)--split(base_dir(App)))--[sep()])--["src","view"]),
+                         F=((((split(naga:source(M))--split(Cwd))--split(base_dir(App)))--[sep()])--["src","view"]),
                          base_url(App,"/"++string:join(F,"/"))
                     end. 
 
@@ -173,13 +174,13 @@ opts(App, H, Opts)
         when is_atom(H) -> Opts.
 
 %{Type,App,Module,Action,Arity,want_session(M),is_steroid(M)}
-dispatch(static,    App)-> [{ base_url(App,static_url(App,"/[...]")), n2o_static,  {dir, filename:join([priv_dir(App),"static"]), mime()}}] ++
-                           lists:foldr(fun({Url,dir,App}, Acc)  -> 
-                                            [{Url, n2o_static, {dir, priv_dir(App), mime()}}|Acc]
-                                         %FIXME:
-                                         %({Url,file,App}, Acc) -> 
-                                            %[{Url, cowboy_static, {file, }}|Acc]
-                                       end, [], wf:config(App, static, []));
+% dispatch(static,    App)-> [{ base_url(App,static_url(App,"/[...]")), n2o_static,  {dir, filename:join([priv_dir(App),"static"]), mime()}}] ++
+%                            lists:foldr(fun({Url,dir,App}, Acc)  -> 
+%                                             [{Url, n2o_static, {dir, priv_dir(App), mime()}}|Acc]
+%                                          %FIXME:
+%                                          %({Url,file,App}, Acc) -> 
+%                                             %[{Url, cowboy_static, {file, }}|Acc]
+%                                        end, [], wf:config(App, static, []));
 dispatch(controller,App)-> Controllers = files(controller,App),
                             lists:foldr(fun({F,M},Acc) ->
                                   [{url(App,M,A), naga_cowboy,#route{type=controller,
