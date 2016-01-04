@@ -2,7 +2,6 @@
 -description('NAGA OTP Application Server').
 -behaviour(supervisor).
 -behaviour(application).
--behaviour(cowboy_middleware).
 -export([start/2, stop/1, init/1, watch/1, unwatch/1]).
 -compile(export_all).
 -include("naga.hrl").
