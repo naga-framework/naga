@@ -100,7 +100,7 @@ edge(App, {File,Module}) ->
    case  Module:dependencies() of [] -> []; Deps ->[{File, X}||{X,_} <- Deps] end.
   
 view_files(App) ->
-  {ok, Modules} = application:get_key(bid,modules),
+  {ok, Modules} = application:get_key(App,modules),
   [{source(M),M}||M <- Modules, is_view(M)].
 
 is_view(M) ->
