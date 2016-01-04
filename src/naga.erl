@@ -116,10 +116,10 @@ priv_dir(App) ->  {ok,Cwd} = file:get_cwd(),
                                               false -> {error, notfound};
                                               DepsDir -> DepsDir end;
                                   AppsDir -> AppsDir end;
-                   Dir       -> filename:join(filename:split(Dir) -- filename:split(Cwd))
+                   Dir       -> Dir
                   end.
 
-want_session(M)  -> E = M:module_info(attributes), proplists:get_value(session,E,true). %% by default true
+want_session(M)  -> E = M:module_info(attributes), [R]=proplists:get_value(session,E,[true]), R. %% by default true
 default_action(M)-> E = M:module_info(attributes),
                    case proplists:get_value(defaut,E) of 
                     undefined -> case erlang:function_exported(M,index,3) of 
