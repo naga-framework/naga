@@ -24,7 +24,8 @@ stop(App)  -> case lists:member(App, wf:config(naga,watch,[])) of
                 true  -> Listeners = wf:config(App,listeners,[]),
                          [begin
                             Ref = listener_name(X, App),
-                            wf:info(?MODULE, "stoping ~p:~s", [App, begin [P,_] = string:tokens(wf:to_list(Ref),"_"), P end]),
+                            wf:info(?MODULE, "stoping ~p:~s", 
+                              [App, begin [P,_] = string:tokens(wf:to_list(Ref),"_"), P end]),
                             cowboy:stop_listener(Ref)
                           end || {X,_} <-Listeners],
                           application:stop(App), ok;
@@ -32,11 +33,9 @@ stop(App)  -> case lists:member(App, wf:config(naga,watch,[])) of
               end.
 
 start(Apps)-> DispatchApps = dispatchApps(Apps),
-              AppsInfo = boot_apps(Apps),
-              ProtoOpts = [{env,[{applications, [Apps]}
-                                 ,{appsInfo, AppsInfo}                      	  
-                                 ,{dispatch, cowboy_router:compile(DispatchApps)}
-                                ]}],
+              AppsInfo     = boot_apps(Apps),
+              ProtoOpts    = [{env,[{applications, [Apps]},{appsInfo, AppsInfo}                      	  
+                                   ,{dispatch, cowboy_router:compile(DispatchApps)}]}],
               [start_listeners(App, ProtoOpts) || App <- Apps].
 
 dispatchApps(Apps)-> lists:foldr(fun(App,Acc) ->                                       
@@ -45,16 +44,10 @@ dispatchApps(Apps)-> lists:foldr(fun(App,Acc) ->
                                      end, [], domains(App)) ++ Acc
                                  end, [], Apps).
 
-dispatch(App)     ->   dispatch(service,   App) ++  %% TODO: websocket service, async server
-                       dispatch(revproxy,  App) ++  %% TODO: reverse proxy
-                       dispatch(fcgi,      App) ++  %% TODO: memcache protocol (ranch?)
-                       dispatch(rest,      App) ++  %% TODO: 
-                       dispatch(static,    App) ++  %% TOTO: dispatch special files.
-                       dispatch(route,     App) ++  %% TODO: from dispatch file        
-                       dispatch(controller,App) ++  
-                       dispatch(view,      App) ++                                 
-                       dispatch(doc,       App) ++  %% TODO                    
-                       dispatch(default,   App).
+dispatch(App)     -> Rules = [service, revproxy,fcgi, rest, static,
+                              route,controller,view, doc, default],
+                     lists:foldr(fun(Rule,Acc)-> dispatch(Rule,App) ++ Acc end,[],
+                                 wf:config(App,rules,Rules)).
 
 start_listeners(App, ProtoOpts) ->
     case wf:config(App, listeners, []) of
@@ -62,52 +55,19 @@ start_listeners(App, ProtoOpts) ->
               listener(App, ?DEFAULT_LISTENER, ProtoOpts, []);
         Listeners -> listener(App, Listeners, ProtoOpts, []) end.
 
-
 listener_name(Type,App) -> wf:atom([Type,App]).
-
-listener(_,[], _,Acc) -> Acc;
-listener(App, [{spdy, Opts}|T], ProtoOpts, Acc) ->
-    Listener    = listener_name(spdy,App),
-    Ip          = proplists:get_value(ip, Opts, {0, 0, 0, 0}),
-    Port        = proplists:get_value(port, Opts, ?DEFAULT_HTTPS_PORT),
-    NbAcceptors = proplists:get_value(acceptors, Opts, ?DEFAULT_ACCEPTOR_PROCESSES),
-    SslOpts     = proplists:get_value(ssl_opts, Opts, ?DEFAULT_SSL_OPTS),
-     TransOpts  = [{ip, Ip},{port, Port}|SslOpts],
-    case cowboy:start_spdy(Listener, NbAcceptors, TransOpts, ProtoOpts) of
-        {ok, Pid} ->
-            wf:info(?MODULE, "starting SPDY server ~p at ~p:~p",[App, Ip,Port]),
-            listener(App, T, ProtoOpts, [{Listener, Pid, TransOpts, ProtoOpts}|Acc]); 
-        {error,{{_,{_,_,{_,_}}},_}} = Err -> 
-            io:format("Can't start SPDY Server: ~p ~p\r\n",[Err, {App, Ip, Port}]);
-        X -> 
-            io:format("Unknown Error: ~p\r\n",[X]), halt(abort,[])
-    end;
-
-listener(App, [{https, Opts}|T], ProtoOpts, Acc) ->
-    Listener    = listener_name(https,App),
-    Ip          = proplists:get_value(ip, Opts, {0, 0, 0, 0}),
-    Port        = proplists:get_value(port, Opts, ?DEFAULT_HTTPS_PORT),
-    NbAcceptors = proplists:get_value(acceptors, Opts, ?DEFAULT_ACCEPTOR_PROCESSES),
-    SslOpts     = proplists:get_value(ssl_opts, Opts, ?DEFAULT_SSL_OPTS),
-     TransOpts  = [{ip, Ip},{port, Port}|SslOpts],
-    case cowboy:start_https(Listener, NbAcceptors, TransOpts, ProtoOpts) of
-        {ok, Pid} ->
-            wf:info(?MODULE, "starting HTTPS server ~p at ~p:~p",[App, Ip,Port]),
-            listener(App, T, ProtoOpts, [{Listener, Pid, TransOpts, ProtoOpts}|Acc]); 
-        {error,{{_,{_,_,{_,_}}},_}} = Err -> 
-            io:format("Can't start Web Server: ~p ~p\r\n",[Err, {App, Ip, Port}]);
-        X -> 
-            io:format("Unknown Error: ~p\r\n",[X]), halt(abort,[])
-    end;
-
-listener(App, [{http, Opts}|T], ProtoOpts, Acc) ->
-    Listener    = listener_name(http,App),
+listener(_,[], _,Acc)   -> Acc;
+listener(App, [{http=Proto, Opts}|T], ProtoOpts, Acc) ->
+    Listener    = listener_name(Proto,App),
     Ip          = proplists:get_value(ip, Opts, {0, 0, 0, 0}),
     Port        = proplists:get_value(port, Opts, ?DEFAULT_HTTP_PORT),
     NbAcceptors = proplists:get_value(acceptors, Opts, ?DEFAULT_ACCEPTOR_PROCESSES),
-    TransOpts   = [{ip, Ip},{port, Port}],
-    case cowboy:start_http(Listener, NbAcceptors, TransOpts, ProtoOpts) of
-        {ok, Pid} -> wf:info(?MODULE, "starting HTTP server ~p at ~p:~p",[App, Ip,Port]),
+    SslOpts     = case (Proto == https) or (Proto == spdy) of false -> [] ;
+                       true -> proplists:get_value(ssl_opts, Opts, ?DEFAULT_SSL_OPTS) end,
+    TransOpts   = [{ip, Ip},{port, Port}|SslOpts],
+    Start       = wf:atom([start,Proto]),
+    case cowboy:Start(Listener, NbAcceptors, TransOpts, ProtoOpts) of
+        {ok, Pid} -> wf:info(?MODULE, "starting ~s server ~p at ~p:~p",[Proto, App, Ip,Port]),
                      listener(App, T, ProtoOpts, [{Listener, Pid, TransOpts, ProtoOpts}|Acc]); 
         {error,{{_,{_,_,{_,_}}},_}} = Err -> 
             io:format("Can't start Web Server: ~p ~p\r\n",[Err, {App, Ip, Port}]);
@@ -185,35 +145,32 @@ url(App,M)       -> case string:tokens(wf:to_list(M), "_") of
                          base_url(App,"/"++string:join(F,"/"))
                     end. 
 
-code_url(App, Code)     -> wf:to_list(Code).
+code_url(App, Code)     -> base_url(App,wf:to_list(["$_",Code,"_$"])).
 handler(App, H)         -> H.
                            
-dispatch(static,App)    -> [{ base_url(App,static_url(App,"/[...]")), n2o_static,  {dir, filename:join([priv_dir(App),"static"]), mime()}}] ++
-                           lists:foldr(fun({Url,dir,App}, Acc)  -> [{Url, n2o_static, {dir, priv_dir(App), mime()}}|Acc]
+dispatch(static,    App)-> [{ base_url(App,static_url(App,"/[...]")), n2o_static,  {dir, filename:join([priv_dir(App),"static"]), mime()}}] ++
+                           lists:foldr(fun({Url,dir,App}, Acc)  -> 
+                                            [{Url, n2o_static, {dir, priv_dir(App), mime()}}|Acc]
                                          %FIXME:
-                                         %({Url,file,App}, Acc) -> [{Url, cowboy_static, {file, }}|Acc]
+                                         %({Url,file,App}, Acc) -> 
+                                            %[{Url, cowboy_static, {file, }}|Acc]
                                        end, [], wf:config(App, static, []));
-
 dispatch(controller,App)-> Controllers = files(controller,App),
                             lists:foldr(fun({F,M},Acc) ->
                                   [{url(App,M,A), naga_cowboy,{controller,App,M,A,N,want_session(M),is_steroid(M)}} || {A,N} <- actions(M)]++Acc
                                end, [], Controllers);
-
-dispatch(view,App)      -> Views = files(view, App),                             
+dispatch(view,      App)-> Views = files(view, App),                             
                              lists:foldr(fun({F,M},Acc) ->                                  
                                   [{url(App,M), naga_cowboy, {view,App,M,render,0,false,false}}]++Acc
                                end, [], Views);
-
-dispatch(default,App)   -> [{ base_url(App,n2o_url(App,"/:controller/:action/[...]")), n2o_stream,  [] },
+dispatch(default,   App)-> [{ base_url(App,n2o_url(App,"/:controller/:action/[...]")), n2o_stream,  [] },
                             { base_url(App,n2o_url(App,"/:controller/[...]")),         n2o_stream,  [] },
                             { base_url(App,n2o_url(App,"/[...]")),                     n2o_stream,  [] },
                             { base_url(App,"/:controller/:action/[...]"),              naga_cowboy, [] },
                             { base_url(App,"/:controller/[...]"),                      naga_cowboy, [] },
                             { base_url(App,"/[...]"),                                  naga_cowboy, [] }];
-
-dispatch(doc,App)       -> [{ base_url(App,doc_url(App,"/[:docname]")),  naga_doc, [{doc,App}] }];
-
-dispatch(route,App)     -> File = route_file(App),
+dispatch(doc,       App)-> [{ base_url(App,doc_url(App,"/[:docname]")),                naga_doc,    [{doc,App}] }];
+dispatch(route,     App)-> File = route_file(App),
                            case file:consult(route_file(App)) of
                              {ok, Routes} -> 
                                 lists:foldr(fun
@@ -230,31 +187,30 @@ dispatch(route,App)     -> File = route_file(App),
 
 dispatch(_,App)         -> [].
 
-
-boot_apps(Apps)        -> boot_app(Apps, []).
-boot_app([], AppsInfo) -> AppsInfo;
-boot_app([App|T], Acc) -> {ok, Modules} = application:get_key(App,modules), 
-                          [code:ensure_loaded(M)||M<-Modules],
-                          AppInfo = #{ %dispatch     => cowboy_router:compile(dispatch(App)),   
-                                       locale       => locale(App),
-                                       base_url     => base_url(App),
-                                       static_prefix=> static_prefix(App),
-                                       doc_prefix   => doc_prefix(App),
-                                       rest_prefix  => rest_prefix(App),
-                                       n2o_prefix   => n2o_prefix(App),
-                                       fcgi_prefix  => fcgi_prefix(App),
-                                       fcgi_opts    => boot_fcgi(App),
-                                       domains      => domains(App)
+boot_apps(Apps)         -> boot_app(Apps, []).
+boot_app([], AppsInfo)  -> AppsInfo;
+boot_app([App|T], Acc)  -> {ok, Modules} = application:get_key(App,modules), 
+                           [code:ensure_loaded(M)||M<-Modules],
+                           AppInfo = #{                                       
+                                       locale         => locale(App),
+                                       base_url       => base_url(App),
+                                       static_prefix  => static_prefix(App),
+                                       doc_prefix     => doc_prefix(App),
+                                       rest_prefix    => rest_prefix(App),
+                                       n2o_prefix     => n2o_prefix(App),
+                                       fcgi_prefix    => fcgi_prefix(App),
+                                       fcgi_opts      => boot_fcgi(App),
+                                       domains        => domains(App)
                                       },
-                          boot_app(T, [{App, AppInfo}|Acc]).
+                           boot_app(T, [{App, AppInfo}|Acc]).
 
-boot_fcgi(App)       -> boot_fcgi(App, wf:config(App, fcgi_enabled, false)).
-boot_fcgi(App, false)-> undefined;
-boot_fcgi(App, true) -> Fcgi     = wf:config(App, fcgi_exe, 'php-fpm'),    
-                        FcgiHost = wf:config(App, fcgi_host, localhost),    
-                        FcgiPort = wf:config(App, fcgi_port, 33000),  
-                        ex_fcgi:start(Fcgi, FcgiHost, FcgiPort),
-                        #{ fcgi_exe => Fcgi,
-                           fcgi_host=> FcgiHost,
-                           fcgi_port=> FcgiPort 
-                        }.
+boot_fcgi(App)          -> boot_fcgi(App, wf:config(App, fcgi_enabled, false)).
+boot_fcgi(App, false)   -> undefined;
+boot_fcgi(App, true)    -> Fcgi     = wf:config(App, fcgi_exe, 'php-fpm'),    
+                           FcgiHost = wf:config(App, fcgi_host, localhost),    
+                           FcgiPort = wf:config(App, fcgi_port, 33000),  
+                           ex_fcgi:start(Fcgi, FcgiHost, FcgiPort),
+                           #{ fcgi_exe => Fcgi,
+                              fcgi_host=> FcgiHost,
+                              fcgi_port=> FcgiPort 
+                            }.
