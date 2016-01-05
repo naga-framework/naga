@@ -11,7 +11,7 @@
 tables()   -> [ ?MODULE ].
 opt()      -> [ set, named_table, { keypos, 1 }, public ].
 start(_,_) -> supervisor:start_link({local,naga},naga,[]).
-init([])   -> [ ets:new(T,opt()) || T <- tables() ],
+init([])   -> %[ ets:new(T,opt()) || T <- tables() ],
               { ok, { { one_for_one, 5, 10 }, 
 	                [	                  
                     ?CHILD(naga_load, worker, [apps()])
@@ -32,9 +32,10 @@ stop(App)  -> case lists:member(App, wf:config(naga,watch,[])) of
               end.
 
 start(Apps)-> DispatchApps = dispatchApps(Apps),
-              AppsInfo     = boot_apps(Apps),
-              ProtoOpts    = [{env,[{applications, Apps},{appsInfo, AppsInfo}                      	  
-                                   ,{dispatch, cowboy_router:compile(DispatchApps)}]}],
+              _AppsInfo    = boot_apps(Apps),
+              ProtoOpts    = [{env,[{applications, Apps} %,{appsInfo, AppsInfo}                      	  
+                                   ,{dispatch, cowboy_router:compile(DispatchApps)}]},
+                              {middlewares, wf:config(naga,middlewares,[cowboy_router,cowboy_handler])}],
               [start_listeners(App, ProtoOpts) || App <- Apps].
 
 dispatchApps(Apps)-> lists:foldr(fun(App,Acc) ->                                       
@@ -252,3 +253,7 @@ boot_fcgi(App, true)    -> Fcgi     = wf:config(App, fcgi_exe, 'php-fpm'),
                               fcgi_host=> FcgiHost,
                               fcgi_port=> FcgiPort 
                             }.
+
+dateformat()            -> erlydtl_dateformat:format("r").
+dateformat(Format)      -> erlydtl_dateformat:format(Format).
+dateformat(Date,Format) -> erlydtl_dateformat:format(Date,Format).
