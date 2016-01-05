@@ -31,14 +31,15 @@
 
 -record(route,{type        =[], 
 	           application =[],
-	           controller  =index,
+	           controller  =[],
 	           module      =[],
 	           action      =index,
-	           arity       =3,
+	           arity       =3,	           
 	           want_session=true,
 	           is_steroid  =false,
-	           params      =[],
-	           opts        =[]
+	           params      =undefined,
+	           bindding    =undefined,
+	           opts        =undefined
 	          }).                           
 
 -endif.

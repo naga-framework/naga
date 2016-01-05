@@ -6,7 +6,6 @@
 -include_lib("n2o/include/wf.hrl").
 -include("naga.hrl").
 -export([run/2,transition/1]).
--export([controller/2]).
 
 transition(Actions) -> receive {'INIT',A} -> transition(A); {'N2O',Pid} -> Pid ! {actions,Actions} end.
 run(Req, []) ->
@@ -19,8 +18,9 @@ run(Req, []) ->
     wf:actions(Ctx1#cx.actions),
     wf:context(Ctx1),
     Elements = case Ctx1#cx.path of              
-                #{}=R -> #{application:=App,module:=Module,action:=A,method:=M,params:=P,bindings:=B}=R,
-                         try handle(App,Module,A,M,P,B) catch C:E -> wf:error_page(C,E) end;
+                #{}=R -> #{application:=App,controller:=C,action:=A,method:=M,params:=P,bindings:=B}=R,
+                         try Mod = naga:module(App,C),
+                             handle(App,Mod,A,M,P,B) catch C:E -> wf:error_page(C,E) end;
                     _ -> try (Ctx1#cx.module):main() catch C:E -> wf:error_page(C,E) end
                end,
     Html = render(Elements),    
@@ -32,14 +32,14 @@ run(Req, []) ->
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2);
 
 run(Req, #route{type=controller,is_steroid=true}=Route) ->
-    #route{application=App,module=Module,action=Act,arity=A,
+    #route{application=App,controller=Ctrl,module=Module,action=Act,arity=A,
            want_session=WantSession}=Route,
     wf:state(status,200),
     Pid = spawn(fun() -> transition([]) end),
     %FIXME: websocket port 
     wf:script(["var transition = {pid: '", wf:pickle(Pid), "', ",
                 "port:'", wf:to_list(wf:config(n2o,websocket_port,wf:config(n2o,port,8000))),"'}"]),
-    Ctx = wf:init_context(Req),
+    Ctx  = wf:init_context(Req),
     Ctx1 = init(Ctx, false, WantSession),
     wf:actions(Ctx1#cx.actions),
     wf:context(Ctx1),
@@ -48,9 +48,9 @@ run(Req, #route{type=controller,is_steroid=true}=Route) ->
                   false  -> {M, _} = cowboy_req:method(Req),
                             {P, _} = cowboy_req:path_info(Req),
                             {B, _} = cowboy_req:bindings(Req),
-                            try handle(App,Module,Act,M,P,B) catch C:E -> wf:error_page(C,E) end
+                            try handle(App,Ctrl,Act,M,P,B) catch C:E -> wf:error_page(C,E) end
                end,
-    Html = render(Elements),    
+    Html    = render(Elements),    
     Actions = wf:actions(),
     Pid ! {'INIT',Actions},
     Ctx2 = finish(Ctx,?CTX, false, WantSession),
@@ -58,10 +58,10 @@ run(Req, #route{type=controller,is_steroid=true}=Route) ->
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2);
 
 run(Req, #route{type=controller,is_steroid=false}=Route) ->
-    #route{application=App,module=Module,action=Act,arity=A,
+    #route{application=App,controller=C,action=Act,arity=A,
            want_session=WantSession} = Route,
     wf:state(status,200),
-    Ctx = wf:init_context(Req),
+    Ctx  = wf:init_context(Req),
     Ctx1 = init(Ctx, false, WantSession),
     wf:context(Ctx1),
     Elements = case (Act == main) andalso (A == 0) of 
@@ -69,7 +69,7 @@ run(Req, #route{type=controller,is_steroid=false}=Route) ->
                   false -> {M, _} = cowboy_req:method(Req),
                            {P, _} = cowboy_req:path_info(Req),
                            {B, _} = cowboy_req:bindings(Req),
-                           try handle(App,Module,Act,M,P,B) catch C:E -> wf:error_page(C,E) end
+                           try handle(App,C,Act,M,P,B) catch C:E -> wf:error_page(C,E) end
                end,    
     Html = render(Elements),    
     Ctx2 = finish(Ctx,?CTX, false, WantSession),
@@ -82,14 +82,13 @@ run(Req, #route{type=view,module=Module}) ->
     Req2 = wf:response(Html,Req),
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2).
 
-
 no_session(L)-> lists:keydelete(session,1,L).
 no_route(L)  -> lists:keydelete(route,1,L).
 
-  init(C,true ,true )     -> wf:fold(init  ,                     C#cx.handlers  ,C);
-  init(C,false,true )     -> wf:fold(init  ,no_route(            C#cx.handlers) ,C);
-  init(C,true ,false)     -> wf:fold(init  ,         no_session( C#cx.handlers) ,C);
-  init(C,false,false)     -> wf:fold(init  ,no_route(no_session( C#cx.handlers)),C).
+  init(C,    true ,true ) -> wf:fold(  init,                     C#cx.handlers  ,C );
+  init(C,    false,true ) -> wf:fold(  init,no_route(            C#cx.handlers) ,C );
+  init(C,    true ,false) -> wf:fold(  init,         no_session( C#cx.handlers) ,C );
+  init(C,    false,false) -> wf:fold(  init,no_route(no_session( C#cx.handlers)),C ).
 finish(C1,C2,true ,true ) -> wf:fold(finish,                    C1#cx.handlers  ,C2);
 finish(C1,C2,false,true ) -> wf:fold(finish,no_route(           C1#cx.handlers) ,C2);
 finish(C1,C2,true ,false) -> wf:fold(finish,         no_session(C1#cx.handlers) ,C2);
@@ -99,45 +98,51 @@ set_cookies([],Req)-> Req;
 set_cookies([{Name,Value,Path,TTL}|Cookies],Req)->
     set_cookies(Cookies,wf:cookie_req(Name,Value,Path,TTL,Req)).
 
-handle(App,C,undefined,M,P,B) -> case erlang:function_exported(C,index,3) of 
-                                    true -> handle(App,C,index,M,P,B); _-> C:main() end;
-handle(App,C,A,M,P,B)         -> case before(App,C,req_ctx(App,C,A,M,P,B)) of
-                                      {ok, Ctx} -> {C:A(M,P,Ctx),Ctx}; 
+handle(App,Mod,undefined,M,P,B) -> case erlang:function_exported(Mod,index,3) of 
+                                    true -> handle(App,Mod,index,M,P,B); _-> Mod:main() end;
+handle(App,Mod,A,M,P,B)         -> case before(App,Mod,req_ctx(App,Mod,A,M,P,B)) of
+                                      {ok, Ctx} -> {Mod:A(M,P,Ctx),Ctx}; 
                                       {error,E} -> error(E);
                                       {redirect, R} -> wf:redirect(R) end.
 
-req_ctx(App,C,A,M,P,B)  -> #{'_app'        => App,
-                             '_method'     => M,
-                             '_controller' => C,
-                             '_action'     => A,
-                             '_bindings'   => B
-                            %'_params'     => P
-                            %'_lang'       => ?CTX#cx.lang,
-                            %'_sid'        => wf:session_id()
+req_ctx(App,Mod,A,M,P,B)  -> #{':application'=> App,
+                             ':method'     => M,
+                             ':controller' => naga:controller(App,Mod),
+                             ':module'     => Mod,
+                             ':action'     => A,
+                             ':params'     => P,                             
+                             ':bindings'   => B
                           }.
 
-before(App,C,Ctx)   -> O = [], %%FIXME: filter config
-                       G = wf:config(App,filter,[]),
-                       Filters = case erlang:function_exported(C,before_filters,2) of 
-                                      true -> C:before_filters(G,Ctx); _ -> G end,
+before(App,Mod,Ctx)   -> O = [], %%FIXME: filter config
+                       G = wf:config(App,filter,[]),                      
+                       Filters = case erlang:function_exported(Mod,before_filters,2) of 
+                                      true -> Mod:before_filters(G,Ctx); _ -> G end,
                        lists:foldr(fun(M, {ok,A}) -> 
                                         case  erlang:function_exported(M,before_filter,2) of
                                               true -> M:before_filter(O,A); _-> {ok, A} end;
                                       (M, {redirect,_}=R) -> R;
                                       (M, {error,_}=E) -> E
                                    end, {ok,Ctx},Filters).
+
 %%todo: middle, after filter?
-%%todo: render_other
-%%todo: action_other
-controller(App,M) -> wf:to_list(M) -- (wf:to_list(App)++"_"). 
+%%todo: not_found
+%%todo: {stream, Generator::function(), Acc0} 
+%%todo: {jsonp, Callback::string(), Data::proplist()} 
+%%todo: {jsonp, Callback::string(), Data::proplist(), Headers::proplist()} 
+
 header([])        -> ok;
 header([{K,V}|T]) -> wf:header(K,V),header(T).
 
+render({{output,Io},Ctx})        -> render({{output,Io,[]},Ctx});
+render({{output,Io,H},Ctx})      -> header(H),Io;
+render({{S,Io,H},Ctx}) 
+              when is_integer(S) -> wf:state(status,S),header(H),Io;
+render({ok,Ctx})                 -> render({{ok,[]},Ctx}); 
 render({{ok,V},Ctx})             -> render({{ok,[],V},Ctx});
 render({{ok,H,V},Ctx})           -> header(H),
-                                    #{'_app':=App,'_controller':=C,'_action':=A} = Ctx,
-                                    wf:info(?MODULE,"RENDER {OK, Vars} -> ~p ",[{App,controller(App,C),A,"html"}]),
-                                    render(#dtl{file={App,controller(App,C),A,"html"}, bindings=V});
+                                    #{':application':=App,':controller':=C,':action':=A} = Ctx,
+                                    render(#dtl{file={App,C,A,"html"}, bindings=V});
 render({{redirect,L},Ctx})       -> render({{redirect,L,[]},Ctx});
 render({{redirect,L,H},_})       -> header([H|{<<"Location">>,L}]),
                                     wf:state(status,302),
@@ -151,12 +156,28 @@ render({{json,V},Ctx})           -> render({{json,V,[],200},Ctx});
 render({{json,V,H,S},_})         -> header(H++?CTYPE_JSON),
                                     wf:state(status,S),
                                     wf:json(V);
+render({{action_other,L},Ctx})   -> #route{application=App,controller=C,action=A}=L,
+                                    #{':method':=M,':params':=P,':bindings':=B} = Ctx,
+                                    try handle(App,C,A,M,P,B) catch C:E -> wf:error_page(C,E) end;
+render({{render_other,L},Ctx})   -> render({{render_other,L,[]},Ctx});
+render({{render_other,L,V},Ctx}) -> case L of 
+                                      #route{module=undefined} ->
+                                        #route{application=App,controller=C,action=A}=L,
+                                        wf_render:render(#dtl{app=App,file={App,C,A,"html"},bindings=V++maps:to_list(Ctx)});
+                                      #route{module=Module} ->                                         
+                                        {ok,Html} = Module:render(V++maps:to_list(Ctx)), Html
+                                    end;                                    
+render({{js,V},Ctx})             -> render({{js,V,[]},Ctx});
+render({{js,V,H},Ctx})           -> header(H++?CTYPE_JS),
+                                    #{':application':=App,':controller':=C,':action':=A} = Ctx,
+                                    wf_render:render(#dtl{app=App,file={App,C,A,"js"},bindings=V++maps:to_list(Ctx)});
+
 %% todo: render css,xml,js,txt via dtl? 
 render({{{json,dtl},V},Ctx})     -> render({{json,V,[]},Ctx});
 render({{{json,dtl},V},Ctx})     -> render({{json,V,[],200},Ctx});
 render({{{json,dtl},V,H,S},Ctx}) -> header(H++?CTYPE_JSON),
                                     wf:state(status,S),
-                                    #{'_app':=App,'_controller':=C,'_action':=A} = Ctx,
+                                    #{':application':=App,':controller':=C,':action':=A} = Ctx,
                                     wf_render:render(#dtl{app=App,file={App,C,A,"json"},bindings=V++maps:to_list(Ctx)});
 render({#dtl{}=E,_})             -> wf_render:render(E);                                    
 render(E)                        -> wf_render:render(E).
