@@ -19,8 +19,7 @@ run(Req, []) ->
     wf:context(Ctx1),
     Elements = case Ctx1#cx.path of              
                 #{}=R -> #{application:=App,controller:=C,action:=A,method:=M,params:=P,bindings:=B}=R,
-                         try Mod = naga:module(App,C),
-                             handle(App,Mod,A,M,P,B) catch C:E -> wf:error_page(C,E) end;
+                         try handle(App,C,A,M,P,B) catch C:E -> wf:error_page(C,E) end;
                     _ -> try (Ctx1#cx.module):main() catch C:E -> wf:error_page(C,E) end
                end,
     Html = render(Elements),    
@@ -31,9 +30,8 @@ run(Req, []) ->
     %wf:info(?MODULE,"Cookies Req: ~p",[Req2]),
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2);
 
-run(Req, #route{type=controller,is_steroid=true}=Route) ->
-    #route{application=App,controller=Ctrl,module=Module,action=Act,arity=A,
-           want_session=WantSession}=Route,
+run(Req, #route{type=mvc,is_steroid=true}=Route) ->
+    #route{application=App,controller=Module,action=Act,arity=A,want_session=WantSession}=Route,
     wf:state(status,200),
     Pid = spawn(fun() -> transition([]) end),
     %FIXME: websocket port 
@@ -48,7 +46,7 @@ run(Req, #route{type=controller,is_steroid=true}=Route) ->
                   false  -> {M, _} = cowboy_req:method(Req),
                             {P, _} = cowboy_req:path_info(Req),
                             {B, _} = cowboy_req:bindings(Req),
-                            try handle(App,Ctrl,Act,M,P,B) catch C:E -> wf:error_page(C,E) end
+                            try handle(App,Module,Act,M,P,B) catch C:E -> wf:error_page(C,E) end
                end,
     Html    = render(Elements),    
     Actions = wf:actions(),
@@ -57,9 +55,8 @@ run(Req, #route{type=controller,is_steroid=true}=Route) ->
     Req2 = wf:response(Html,set_cookies(wf:cookies(),Ctx2#cx.req)),
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2);
 
-run(Req, #route{type=controller,is_steroid=false}=Route) ->
-    #route{application=App,controller=C,action=Act,arity=A,
-           want_session=WantSession} = Route,
+run(Req, #route{type=mvc,is_steroid=false}=Route) ->
+    #route{application=App,controller=C,action=Act,arity=A,want_session=WantSession} = Route,
     wf:state(status,200),
     Ctx  = wf:init_context(Req),
     Ctx1 = init(Ctx, false, WantSession),
@@ -76,7 +73,7 @@ run(Req, #route{type=controller,is_steroid=false}=Route) ->
     Req2 = wf:response(Html,set_cookies(wf:cookies(),Ctx2#cx.req)),
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2);
 
-run(Req, #route{type=view,module=Module}) ->
+run(Req, #route{type=view,view=Module}) ->
     wf:state(status,200),   
     {ok,Html} = Module:render(),    
     Req2 = wf:response(Html,Req),
@@ -106,15 +103,14 @@ handle(App,Mod,A,M,P,B)         -> case before(App,Mod,req_ctx(App,Mod,A,M,P,B))
                                       {redirect, R} -> wf:redirect(R) end.
 
 req_ctx(App,Mod,A,M,P,B)  -> #{':application'=> App,
-                             ':method'     => M,
-                             ':controller' => naga:controller(App,Mod),
-                             ':module'     => Mod,
-                             ':action'     => A,
-                             ':params'     => P,                             
-                             ':bindings'   => B
-                          }.
+                               ':method'     => M,
+                               ':controller' => Mod,
+                               ':action'     => A,
+                               ':params'     => P,                             
+                               ':bindings'   => B
+                              }.
 
-before(App,Mod,Ctx)   -> O = [], %%FIXME: filter config
+before(App,Mod,Ctx) -> O = [], %%FIXME: filter config
                        G = wf:config(App,filter,[]),                      
                        Filters = case erlang:function_exported(Mod,before_filters,2) of 
                                       true -> Mod:before_filters(G,Ctx); _ -> G end,
@@ -161,10 +157,10 @@ render({{action_other,L},Ctx})   -> #route{application=App,controller=C,action=A
                                     try handle(App,C,A,M,P,B) catch C:E -> wf:error_page(C,E) end;
 render({{render_other,L},Ctx})   -> render({{render_other,L,[]},Ctx});
 render({{render_other,L,V},Ctx}) -> case L of 
-                                      #route{module=undefined} ->
+                                      #route{controller=[]} ->
                                         #route{application=App,controller=C,action=A}=L,
                                         wf_render:render(#dtl{app=App,file={App,C,A,"html"},bindings=V++maps:to_list(Ctx)});
-                                      #route{module=Module} ->                                         
+                                      #route{controller=Module} ->                                         
                                         {ok,Html} = Module:render(V++maps:to_list(Ctx)), Html
                                     end;                                    
 render({{js,V},Ctx})             -> render({{js,V,[]},Ctx});

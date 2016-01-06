@@ -31,6 +31,7 @@ stop(App)  -> case lists:member(App, wf:config(naga,watch,[])) of
                 false -> ok 
               end.
 
+start(App) when is_atom(App) -> start([App]);
 start(Apps)-> DispatchApps = dispatchApps(Apps),
               _AppsInfo    = boot_apps(Apps),
               ProtoOpts    = [{env,[{applications, Apps} %,{appsInfo, AppsInfo}                      	  
@@ -44,8 +45,7 @@ dispatchApps(Apps)-> lists:foldr(fun(App,Acc) ->
                                      end, [], domains(App)) ++ Acc
                                  end, [], Apps).
 
-dispatch(App)     -> Rules = [service, revproxy, fcgi, rest, route,
-                              controller,view, doc, default],
+dispatch(App)     -> Rules = [service, revproxy, fcgi, rest, route, view, doc, mvc],
                      lists:foldr(fun(Rule,Acc)-> dispatch(Rule,App) ++ Acc end,[],
                                  wf:config(App,rules,Rules)).
 
@@ -70,7 +70,7 @@ listener(App, [{Proto, Opts}|T], ProtoOpts, Acc) ->
     case cowboy:Start(Listener, NbAcceptors, TransOpts, ProtoOpts) of
         {ok, Pid} -> wf:info(?MODULE, "starting ~s server ~p at ~p:~p",[Proto, App, Ip,Port]),
                      listener(App, T, ProtoOpts, [{Listener, Pid, TransOpts, ProtoOpts}|Acc]); 
-        {error,{{_,{_,_,{_,_}}},_}} = Err -> 
+        {error,_} = Err -> 
             io:format("Can't start Web Server: ~p ~p\r\n",[Err, {App, Ip, Port}]);
         X -> 
             io:format("Unknown Error: ~p\r\n",[X]), halt(abort,[])
@@ -102,26 +102,26 @@ base_url(App,Url) -> case base_url(App) of "/" -> Url; Base -> string:join([Base
 base_dir(App)     -> filename:join(lists:reverse(tl(lists:reverse(filename:split(priv_dir(App)))))).
 source_dir(App)   -> filename:join([base_dir(App), "src", "controller"]).                      
 
-files(controller,App)  -> [{F, module(F)}|| F <- mad_compile:files(source_dir(App),".erl")];
-files(view,App)        -> naga_load:view_files(App).
-module(F)              -> wf:atom([filename:basename(F, ".erl")]).
+files(controller,App) -> [{F, module(F)}|| F <- mad_compile:files(source_dir(App),".erl")];
+files(view,App)   -> naga_load:view_files(App).
+module(F)         -> wf:atom([filename:basename(F, ".erl")]).
 
-domains(App)  -> case wf:config(App, domains, ['_']) of all -> ['_']; E -> E end.
-mime()        -> [{mimetypes,cow_mimetypes,all}].
-is_dir(D)     -> case filelib:is_dir(D) of true -> D; false -> false end.
-priv_dir(App) ->  {ok,Cwd} = file:get_cwd(), 
-                  case code:priv_dir(App) of
-                   {error,_} -> case is_dir(filename:join(["apps", wf:to_list(App), "priv"])) of                                  
-                                  false   -> case is_dir(filename:join(["deps", wf:to_list(App), "priv"])) of
-                                              false -> {error, notfound};
-                                              DepsDir -> DepsDir end;
-                                  AppsDir -> AppsDir end;
-                   Dir       -> Dir
-                  end.
+domains(App)      -> case wf:config(App, domains, ['_']) of all -> ['_']; E -> E end.
+mime()            -> [{mimetypes,cow_mimetypes,all}].
+is_dir(D)         -> case filelib:is_dir(D) of true -> D; false -> false end.
+priv_dir(App)     -> {ok,Cwd} = file:get_cwd(), 
+                     case code:priv_dir(App) of
+                       {error,_} -> case is_dir(filename:join(["apps", wf:to_list(App), "priv"])) of                                  
+                                      false   -> case is_dir(filename:join(["deps", wf:to_list(App), "priv"])) of
+                                                  false -> {error, notfound};
+                                                  DepsDir -> DepsDir end;
+                                      AppsDir -> AppsDir end;
+                       Dir       -> Dir
+                     end.
 
 want_session(M)  -> E = M:module_info(attributes), [R]=proplists:get_value(session,E,[true]), R. %% by default true
 default_action(M)-> E = M:module_info(attributes),
-                   case proplists:get_value(defaut,E) of 
+                   case proplists:get_value(defaut_action,E) of 
                     undefined -> case erlang:function_exported(M,index,3) of 
                                   true  -> index;
                                   false -> case erlang:function_exported(M,main,0) of 
@@ -146,69 +146,31 @@ url(App,M)       -> case string:tokens(wf:to_list(M), "_") of
                          base_url(App,"/"++string:join(F,"/"))
                     end. 
 
-get_kv(K, Opts, Default)-> V = proplists:get_value(K, Opts, Default),
-                           KV = {K, V}, {KV, Opts -- [KV]}.
-module(A,C)         -> wf:atom([A,C]).
-controller(A,M)     -> wf:atom([wf:to_list(M) -- wf:to_list([A,"_"])]).
-code_url(Code)      -> wf:to_list(["/$_",Code,"_$"]).
-handler(App,H) when is_list(H) -> naga_cowboy;
+get_kv(K, O, D)  -> V = proplists:get_value(K,O,D), KV = {K,V}, {KV, O -- [KV]}.
+%module(A,C)      -> wf:atom([A,C]).
+%controller(A,M)  -> wf:atom([wf:to_list(M) -- wf:to_list([A,"_"])]).
+code_url(Code)   -> wf:to_list(["/$_",Code,"_$"]).
+
+handler(App,H) when is_list(H) -> wf:config(naga,bridge,naga_cowboy);
 handler(App,H) when is_atom(H) -> H.
 
 opts(App, H, Opts) 
         when is_list(H) -> {{application,App1},O } = get_kv(application,H,App),
                            {{controller,C},    O1} = get_kv(controller,O,index),
                            {{action,Act},      P } = get_kv(action,O1,index), 
-                           M = module(App1,C),
-                           #route{type=controller,
+                           #route{type=mvc,
                                   application=App1,
                                   controller=C,
-                                  module=M,
                                   action=Act,
                                   arity=3,
-                                  want_session=want_session(M),
-                                  is_steroid=is_steroid(M),
+                                  want_session=want_session(C),
+                                  is_steroid=is_steroid(C),
                                   params=P,
                                   opts=Opts};
 
 opts(App, H, Opts) 
         when is_atom(H) -> Opts.
 
-%{Type,App,Module,Action,Arity,want_session(M),is_steroid(M)}
-% dispatch(static,    App)-> [{ base_url(App,static_url(App,"/[...]")), n2o_static,  {dir, filename:join([priv_dir(App),"static"]), mime()}}] ++
-%                            lists:foldr(fun({Url,dir,App}, Acc)  -> 
-%                                             [{Url, n2o_static, {dir, priv_dir(App), mime()}}|Acc]
-%                                          %FIXME:
-%                                          %({Url,file,App}, Acc) -> 
-%                                             %[{Url, cowboy_static, {file, }}|Acc]
-%                                        end, [], wf:config(App, static, []));
-dispatch(controller,App)-> Controllers = files(controller,App),
-                            lists:foldr(fun({F,M},Acc) ->
-                                  [{url(App,M,A), naga_cowboy,#route{type=controller,
-                                                                     application=App,
-                                                                     controller=controller(App,M),
-                                                                     module=M,
-                                                                     action=A,
-                                                                     arity=N,
-                                                                     want_session=want_session(M),
-                                                                     is_steroid=is_steroid(M)}} || {A,N} <- actions(M)]++Acc
-                               end, [], Controllers);
-dispatch(view,      App)-> Views = files(view, App),                             
-                             lists:foldr(fun({F,M},Acc) ->                                  
-                                  [{url(App,M), naga_cowboy, #route{type=view,
-                                                                    application=App,
-                                                                    module=M,
-                                                                    action=render,
-                                                                    arity=0,
-                                                                    want_session=false,
-                                                                    is_steroid=false}}]++Acc
-                               end, [], Views);
-dispatch(default,   App)-> [{ base_url(App,n2o_url(App,"/:controller/:action/[...]")), n2o_stream,  [] },
-                            { base_url(App,n2o_url(App,"/:controller/[...]")),         n2o_stream,  [] },
-                            { base_url(App,n2o_url(App,"/[...]")),                     n2o_stream,  [] },
-                            { base_url(App,"/:controller/:action/[...]"),              naga_cowboy, [] },
-                            { base_url(App,"/:controller/[...]"),                      naga_cowboy, [] },
-                            { base_url(App,"/[...]"),                                  naga_cowboy, [] }];
-dispatch(doc,       App)-> [{ base_url(App,doc_url(App,"/[:docname]")),                naga_cowboy, [#route{type=doc,application=App}]}];
 dispatch(route,     App)-> File = route_file(App),
                            case file:consult(route_file(App)) of
                              {ok, Routes} ->    
@@ -220,11 +182,42 @@ dispatch(route,     App)-> File = route_file(App),
                                             end, 
                                   [], lists:flatten(Routes));
                              {error,_} = Err -> 
-                                wf:error(?MODULE, "Missing or invalid NAGE routes file: ~p~n~p~n", 
+                                wf:error(?MODULE, "Missing or invalid NAGA routes file: ~p~n~p~n", 
                                 [File, Err]), [] 
                            end;
 
-dispatch(_,App)         -> [].
+dispatch(view,      App)-> Views = files(view, App),                             
+                             lists:foldr(fun({F,M},Acc) ->                                  
+                                  [{url(App,M), wf:config(naga,bridge,naga_cowboy), 
+                                                #route{type=view,
+                                                       application=App,
+                                                       view=M,
+                                                       action=render,
+                                                       arity=0,
+                                                       want_session=false,
+                                                       is_steroid=false}}]++Acc
+                               end, [], Views);
+%FIXME
+dispatch(doc,      App)-> [{ base_url(App,doc_url(App,"/[:docname]")),                wf:config(naga,bridge,naga_cowboy), [#route{type=doc,application=App}]}];
+
+dispatch(mvc,      App)-> Controllers = files(controller,App),
+                          lists:foldr(fun({F,M},Acc) ->
+                                          [{url(App,M,A), wf:config(naga,bridge,naga_cowboy),
+                                                          #route{type=mvc,
+                                                                 application=App,                                                                     
+                                                                 controller=M,
+                                                                 action=A,
+                                                                 arity=N,
+                                                                 want_session=want_session(M),
+                                                                 is_steroid=is_steroid(M)}} || {A,N} <- actions(M)]++Acc
+                                      end, [], Controllers) ++
+                           [{ base_url(App,n2o_url(App,"/:controller/:action/[...]")), wf:config(naga,stream,n2o_stream),  [] },
+                            { base_url(App,n2o_url(App,"/:controller/[...]")),         wf:config(naga,stream,n2o_stream),  [] },
+                            { base_url(App,n2o_url(App,"/[...]")),                     wf:config(naga,stream,n2o_stream),  [] },
+                            { base_url(App,"/:controller/:action/[...]"),              wf:config(naga,bridge,naga_cowboy), [] },
+                            { base_url(App,"/:controller/[...]"),                      wf:config(naga,bridge,naga_cowboy), [] },
+                            { base_url(App,"/[...]"),                                  wf:config(naga,bridge,naga_cowboy), [] }];
+dispatch(       _, App) -> [].
 
 boot_apps(Apps)         -> boot_app(Apps, []).
 boot_app([], AppsInfo)  -> AppsInfo;

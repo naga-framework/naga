@@ -31,8 +31,8 @@
 
 -record(route,{type        =[], 
 	           application =[],
-	           controller  =[],
-	           module      =[],
+	           controller  =[],  %% controller == module
+	           view        =[],  %% view       == module 
 	           action      =index,
 	           arity       =3,	           
 	           want_session=true,
