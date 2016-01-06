@@ -1,16 +1,15 @@
 Nāga: Erlang Web Framework (beta)
 =================================
 
-GOAL:
- - Keep it small, fast, less dependencies as much as possible, 
- - NO PMOD, 
- - Compiled module for routing
- - Bring ChicagoBoss flavour to n2o framework.
- 
+#Overview
+
+Naga framework is a web development framework written in erlang which implements the server-side MVC pattern. [Naga](http://github.com/naga-framework/naga) is build on top of [N2O](http://synrc.com/) framework, many of  its components and concepts are from [ChicagoBoss](http://chicagoboss.org).
+
+Naga provides the best of both framework - [ChicagoBoss](http://chicagoboss.org) and  [N2O](http://synrc.com/), for implementing realtime features in modern web HTML5 application.
 
 # Requirements
 
-- [Erlang/OTP](http://www.erlang.org) version >= 17,  require maps
+- [Erlang/OTP](http://www.erlang.org) version >= 18,  require maps
 
 # Get Started
 
@@ -47,27 +46,34 @@ and drop it in your $PATH
     $ mad create name=<app_name> tpl=<tpl_name> port=<9001>
 
 ```bash
-mad create name=toto tpl=hello port=9000
-Name = "toto"
-TplName = "hello"
-Vars = [{port,"9000"},{tpl,"hello"},{name,"toto"}]
-Writing toto/apps/toto/rebar.config
-Writing toto/apps/rebar.config
-Writing toto/rebar.config
-Writing toto/vm.args
-Writing toto/sys.config
-Writing toto/apps/toto/src/toto.app.src
-Writing toto/apps/toto/src/toto.erl
-Writing toto/apps/toto/src/controller/index.erl
-Writing toto/apps/toto/src/controller/error.erl
-Writing toto/apps/toto/src/toto_routes.erl
-Writing toto/apps/toto/src/view/index/index.html
-Writing toto/apps/toto/src/view/error/404.html
+mad create name=hello tpl=basic port=9000
+Name = "hello"
+TplName = "basic"
+Vars = [{port,"9000"},{tpl,"basic"},{name,"hello"}]
+Writing hello/apps/hello/rebar.config
+Writing hello/apps/rebar.config
+Writing hello/rebar.config
+Writing hello/vm.args
+Writing hello/sys.config
+Writing hello/apps/hello/src/hello.app.src
+Writing hello/apps/hello/src/hello.erl
+Writing hello/apps/hello/src/controller/index.erl
+Writing hello/apps/hello/src/controller/error.erl
+Writing hello/apps/hello/src/hello_routes.erl
+Writing hello/apps/hello/priv/hello.routes
+Writing hello/apps/hello/src/view/layout/n2o.html
+Writing hello/apps/hello/src/view/layout/page.html
+Writing hello/apps/hello/src/view/index/basic.html
+Failed to write output file "hello/apps/hello/src/view/index/basic.html": badarg
+Writing hello/apps/hello/src/view/error/404.html
+Writing hello/apps/hello/priv/templates/index.html
+Writing hello/apps/hello/priv/static/synrc.css
+Writing hello/apps/hello/priv/static/spa/index.htm
 OK
 ```  
 ## start to develop
 
 ```shell
-cd toto
-mad deps comp plan repl
+cd hello
+mad clean deps comp plan repl -name hello@127.0.0.1
 ```
