@@ -101,6 +101,7 @@ edge(App, {File,Module}) ->
   
 view_files(App) ->
   {ok, Modules} = application:get_key(App,modules),
+  [code:ensure_loaded(M)||M<-Modules],
   [{source(M),M}||M <- Modules, is_view(M)].
 
 is_view(M) ->
