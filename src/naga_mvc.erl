@@ -68,7 +68,7 @@ run(Req, #route{type=mvc,is_steroid=false}=Route) ->
                            {B, _} = cowboy_req:bindings(Req),
                            try handle(App,C,Act,M,P,B) catch C:E -> wf:error_page(C,E) end
                end,    
-    Html = render(Elements),    
+    Html = render(Elements),
     Ctx2 = finish(Ctx,?CTX, false, WantSession),
     Req2 = wf:response(Html,set_cookies(wf:cookies(),Ctx2#cx.req)),
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2);
@@ -146,7 +146,13 @@ render({{redirect,L,H},_})       -> header([H|{<<"Location">>,L}]),
 render({{moved,L},Ctx})          -> render({{moved,L,[]},Ctx});
 render({{moved,L,H},_})          -> header([H|{<<"Location">>,L}]),
                                     wf:state(status,301),
-                                    render(#dtl{});
+                                    render(#dtl{});                                    
+render({{json,dtl,V},Ctx})       -> render({{json,dtl,V,[]},Ctx});
+render({{json,dtl,V,H},Ctx})     -> render({{json,dtl,V,H,200},Ctx});
+render({{json,dtl,V,H,S},Ctx})   -> header(H++?CTYPE_JSON),
+                                    wf:state(status,S),
+                                    #{':application':=App,':controller':=C,':action':=A} = Ctx,
+                                    wf_render:render(#dtl{app=App,file={App,C,A,"json"},bindings=V++maps:to_list(Ctx)});                                    
 render({{json,V},Ctx})           -> render({{json,V,[]},Ctx});
 render({{json,V},Ctx})           -> render({{json,V,[],200},Ctx});
 render({{json,V,H,S},_})         -> header(H++?CTYPE_JSON),
@@ -169,12 +175,6 @@ render({{js,V,H},Ctx})           -> header(H++?CTYPE_JS),
                                     wf_render:render(#dtl{app=App,file={App,C,A,"js"},bindings=V++maps:to_list(Ctx)});
 
 %% todo: render css,xml,js,txt via dtl? 
-render({{{json,dtl},V},Ctx})     -> render({{json,V,[]},Ctx});
-render({{{json,dtl},V},Ctx})     -> render({{json,V,[],200},Ctx});
-render({{{json,dtl},V,H,S},Ctx}) -> header(H++?CTYPE_JSON),
-                                    wf:state(status,S),
-                                    #{':application':=App,':controller':=C,':action':=A} = Ctx,
-                                    wf_render:render(#dtl{app=App,file={App,C,A,"json"},bindings=V++maps:to_list(Ctx)});
 render({#dtl{}=E,_})             -> wf_render:render(E);                                    
 render(E)                        -> wf_render:render(E).
 
