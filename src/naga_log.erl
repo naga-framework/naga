@@ -1,4 +1,4 @@
--compile({parse_transform, lager_transform}).
+%-compile({parse_transform, lager_transform}).
 -module(naga_log).
 -compile(export_all).
 

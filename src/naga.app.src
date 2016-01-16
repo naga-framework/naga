@@ -1,7 +1,7 @@
 {application, naga, [
     {description,  "Naga Web Application Server."},
     {vsn,          "0.2"},
-    {applications, [kernel, stdlib, lager, active, n2o]},
+    {applications, [kernel, stdlib, active, n2o]},
     {modules, []},
     {registered,   []},
     {mod, { naga,   []}},
