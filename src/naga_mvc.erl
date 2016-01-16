@@ -130,7 +130,7 @@ before(App,Mod,Ctx) -> O = [], %%FIXME: filter config
 header([])        -> ok;
 header([{K,V}|T]) -> wf:header(K,V),header(T).
 
-render({{output,Io},Ctx})        -> render({{output,Io,[]},Ctx});
+render({{output,Io},Ctx})        -> render({{output,Io,?CTYPE_PLAIN},Ctx});
 render({{output,Io,H},Ctx})      -> header(H),Io;
 render({{S,Io,H},Ctx}) 
               when is_integer(S) -> wf:state(status,S),header(H),Io;
@@ -147,14 +147,14 @@ render({{moved,L},Ctx})          -> render({{moved,L,[]},Ctx});
 render({{moved,L,H},_})          -> header([H|{<<"Location">>,L}]),
                                     wf:state(status,301),
                                     render(#dtl{});                                    
-render({{json,dtl,V},Ctx})       -> render({{json,dtl,V,[]},Ctx});
-render({{json,dtl,V,H},Ctx})     -> render({{json,dtl,V,H,200},Ctx});
-render({{json,dtl,V,H,S},Ctx})   -> header(H++?CTYPE_JSON),
+render({{json_,V},Ctx})          -> render({{json_,V,[]},Ctx});
+render({{json_,V,H},Ctx})        -> render({{json_,V,H,200},Ctx});
+render({{json_,V,H,S},Ctx})      -> header(H++?CTYPE_JSON),
                                     wf:state(status,S),
                                     #{':application':=App,':controller':=C,':action':=A} = Ctx,
                                     wf_render:render(#dtl{app=App,file={App,C,A,"json"},bindings=V++maps:to_list(Ctx)});                                    
 render({{json,V},Ctx})           -> render({{json,V,[]},Ctx});
-render({{json,V},Ctx})           -> render({{json,V,[],200},Ctx});
+render({{json,V,H},Ctx})         -> render({{json,V,H,200},Ctx});
 render({{json,V,H,S},_})         -> header(H++?CTYPE_JSON),
                                     wf:state(status,S),
                                     wf:json(V);
