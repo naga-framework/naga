@@ -102,7 +102,8 @@ base_url(App,Url) -> case base_url(App) of "/" -> Url; Base -> string:join([Base
 base_dir(App)     -> filename:join(lists:reverse(tl(lists:reverse(filename:split(priv_dir(App)))))).
 source_dir(App)   -> filename:join([base_dir(App), "src", "controller"]).                      
 
-files(controller,App) -> [{F, module(F)}|| F <- mad_compile:files(source_dir(App),".erl")];
+%files(controller,App) -> [{F, module(F)}|| F <- mad_compile:files(source_dir(App),".erl")];
+files(controller,App) -> naga_load:controller_files(App);
 files(view,App)   -> naga_load:view_files(App).
 module(F)         -> wf:atom([filename:basename(F, ".erl")]).
 
@@ -207,7 +208,7 @@ dispatch(view,      App)-> Views = files(view, App),
 dispatch(doc,      App)-> [{ base_url(App,doc_url(App,"/[:docname]")),                wf:config(naga,bridge,naga_cowboy), [#route{type=doc,application=App}]}];
 
 dispatch(mvc,      App)-> Controllers = files(controller,App),
-                          lists:foldr(fun({F,M},Acc) ->
+                          lists:foldr(fun({_,M},Acc) ->
                                           [{url(App,M,A), wf:config(naga,bridge,naga_cowboy),
                                                           #route{type=mvc,
                                                                  application=App,                                                                     
