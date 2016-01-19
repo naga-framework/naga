@@ -171,8 +171,14 @@ opts(App, H, Opts)
 opts(App, H, Opts) 
         when is_atom(H) -> Opts.
 
-dispatch(route,     App)-> File = route_file(App),
-                           case file:consult(route_file(App)) of
+consult(App)            -> Path = wf:f("apps/~s/priv/~s.routes",[wf:to_list(App),wf:to_list(App)]), %%FIXME, window
+                           case mad_repl:load_file(Path) of
+                                {ok, ETSFile} -> 
+                                     wf:info(?MODULE,"LOAD ROUTE FILE from bundle. ~s", [Path]),
+                                     {ok, mad_tpl:consult(ETSFile)};
+                                _ -> file:consult(route_file(App)) end.
+
+dispatch(route,     App)-> case consult(App) of
                              {ok, Routes} ->    
                                 lists:foldr(fun
                                               ({Code, Handler, Opts}, Acc) when is_integer(Code) ->
@@ -183,7 +189,7 @@ dispatch(route,     App)-> File = route_file(App),
                                   [], lists:flatten(Routes));
                              {error,_} = Err -> 
                                 wf:error(?MODULE, "Missing or invalid NAGA routes file: ~p~n~p~n", 
-                                [File, Err]), [] 
+                                [route_file(App), Err]), [] 
                            end;
 
 dispatch(view,      App)-> Views = files(view, App),                             
