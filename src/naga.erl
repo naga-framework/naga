@@ -32,7 +32,10 @@ stop(App)  -> case lists:member(App, wf:config(naga,watch,[])) of
               end.
 
 start(App) when is_atom(App) -> start([App]);
-start(Apps)-> DispatchApps = dispatchApps(Apps),
+start(Apps)-> DispatchApps = case read_dump_file(Apps) of 
+                                  {ok, Routes} -> wf:info(?MODULE,"Boot from binary route files.",[]), 
+                                             Routes; 
+                                  _ -> dispatchApps(Apps) end,
               _AppsInfo    = boot_apps(Apps),
               ProtoOpts    = [{env,[{applications, Apps} %,{appsInfo, AppsInfo}                      	  
                                    ,{dispatch, cowboy_router:compile(DispatchApps)}]},
@@ -84,7 +87,10 @@ is_view(M)        -> naga_load:is_view(M).
 source(M)         -> naga_load:source(M).
 app(M)            -> naga_load:app(M).
 route_file(App)   -> filename:join([priv_dir(App), lists:concat([wf:atom([App]), ".routes"])]).
-
+dump_file(App)    -> filename:join([priv_dir(App), lists:concat([wf:atom([App]), ".routes.dat"])]).
+dump_route(App)   -> File = dump_file(App), 
+                     B = term_to_binary(cowboy_router:compile(dispatchApps(App))),
+                     file:write_file(File,B).
 static_prefix(App)-> wf:config(App,static_prefix,"/static").
 static_url(App,Uri)-> string:join([static_prefix(App),Uri],"").
 
@@ -110,8 +116,7 @@ module(F)         -> wf:atom([filename:basename(F, ".erl")]).
 domains(App)      -> case wf:config(App, domains, ['_']) of all -> ['_']; E -> E end.
 mime()            -> [{mimetypes,cow_mimetypes,all}].
 is_dir(D)         -> case filelib:is_dir(D) of true -> D; false -> false end.
-priv_dir(App)     -> {ok,Cwd} = file:get_cwd(), 
-                     case code:priv_dir(App) of
+priv_dir(App)     -> case code:priv_dir(App) of
                        {error,_} -> case is_dir(filename:join(["apps", wf:to_list(App), "priv"])) of                                  
                                       false   -> case is_dir(filename:join(["deps", wf:to_list(App), "priv"])) of
                                                   false -> {error, notfound};
@@ -128,12 +133,11 @@ default_action(M)-> E = M:module_info(attributes),
                                   false -> case erlang:function_exported(M,main,0) of 
                                                 true -> main; false -> {error, '404'} end end;
                     Default -> Default end.
-actions(M)       -> A = M:module_info(attributes), 
-                    Actions = lists:usort(proplists:get_value(actions,A,[]) ++ [default_action(M)]),
+actions(M)       -> Attr = M:module_info(attributes), 
+                    Actions = lists:usort(proplists:get_value(actions,Attr,[]) ++ [default_action(M)]),
                     E = M:module_info(exports),
-                    [{A,proplists:get_value(A,E)}|| A <- Actions].
+                    [{X,proplists:get_value(X,E)}|| X <- Actions].
                     %[ X ||{N,A} = X <- M:module_info(exports), A == 3 ]. 
-                    %% maybe can use dializer here to find out 
 is_steroid(M)    -> erlang:function_exported(M,event,1).
 
 split(F)         -> filename:split(F).
@@ -152,8 +156,8 @@ get_kv(K, O, D)  -> V = proplists:get_value(K,O,D), KV = {K,V}, {KV, O -- [KV]}.
 %controller(A,M)  -> wf:atom([wf:to_list(M) -- wf:to_list([A,"_"])]).
 code_url(Code)   -> wf:to_list(["/$_",Code,"_$"]).
 
-handler(App,H) when is_list(H) -> wf:config(naga,bridge,naga_cowboy);
-handler(App,H) when is_atom(H) -> H.
+handler(_App,H) when is_list(H) -> wf:config(naga,bridge,naga_cowboy);
+handler(_App,H) when is_atom(H) -> H.
 
 opts(App, H, Opts) 
         when is_list(H) -> {{application,App1},O } = get_kv(application,H,App),
@@ -169,13 +173,21 @@ opts(App, H, Opts)
                                   params=P,
                                   opts=Opts};
 
-opts(App, H, Opts) 
+opts(_App, H, Opts) 
         when is_atom(H) -> Opts.
 
-consult(App)            -> Path = wf:f("apps/~s/priv/~s.routes",[wf:to_list(App),wf:to_list(App)]), %%FIXME, window
+read_dump_file(Apps)
+      when is_list(Apps)-> {ok, lists:flatten([case read_dump_file(A) of {ok, B} -> binary_to_term(B); _ -> [] end||A<-Apps])};
+read_dump_file(App)
+     when is_atom(App)  -> Path = wf:f("apps/~s/priv/~s.routes.dat",[wf:to_list(App),wf:to_list(App)]), %%FIXME, window, deps?
+                           case mad_repl:load_file(Path) of
+                                {ok, ETSFile} -> {ok, ETSFile}; 
+                                _ ->  file:read_file(Path) end.
+
+consult(App)            -> Path = wf:f("apps/~s/priv/~s.routes",[wf:to_list(App),wf:to_list(App)]), %%FIXME, window, deps?
                            case mad_repl:load_file(Path) of
                                 {ok, ETSFile} -> 
-                                     wf:info(?MODULE,"LOAD ROUTE FILE from bundle. ~s", [Path]),
+                                     %wf:info(?MODULE,"LOAD ROUTE FILE from bundle. ~s", [Path]),
                                      {ok, mad_tpl:consult(ETSFile)};
                                 _ -> file:consult(route_file(App)) end.
 
@@ -194,7 +206,7 @@ dispatch(route,     App)-> case consult(App) of
                            end;
 
 dispatch(view,      App)-> Views = files(view, App),                             
-                             lists:foldr(fun({F,M},Acc) ->                                  
+                             lists:foldr(fun({_,M},Acc) ->                                  
                                   [{url(App,M), wf:config(naga,bridge,naga_cowboy), 
                                                 #route{type=view,
                                                        application=App,
@@ -205,7 +217,7 @@ dispatch(view,      App)-> Views = files(view, App),
                                                        is_steroid=false}}]++Acc
                                end, [], Views);
 %FIXME
-dispatch(doc,      App)-> [{ base_url(App,doc_url(App,"/[:docname]")),                wf:config(naga,bridge,naga_cowboy), [#route{type=doc,application=App}]}];
+dispatch(doc,      App)-> [{ base_url(App,doc_url(App,"/[:docname]")),                 wf:config(naga,bridge,naga_cowboy), [#route{type=doc,application=App}]}];
 
 dispatch(mvc,      App)-> Controllers = files(controller,App),
                           lists:foldr(fun({_,M},Acc) ->
@@ -224,7 +236,7 @@ dispatch(mvc,      App)-> Controllers = files(controller,App),
                             { base_url(App,"/:controller/:action/[...]"),              wf:config(naga,bridge,naga_cowboy), [] },
                             { base_url(App,"/:controller/[...]"),                      wf:config(naga,bridge,naga_cowboy), [] },
                             { base_url(App,"/[...]"),                                  wf:config(naga,bridge,naga_cowboy), [] }];
-dispatch(       _, App) -> [].
+dispatch(      _, _App) -> [].
 
 boot_apps(Apps)         -> boot_app(Apps, []).
 boot_app([], AppsInfo)  -> AppsInfo;
@@ -244,7 +256,7 @@ boot_app([App|T], Acc)  -> {ok, Modules} = application:get_key(App,modules),
                            boot_app(T, [{App, AppInfo}|Acc]).
 
 boot_fcgi(App)          -> boot_fcgi(App, wf:config(App, fcgi_enabled, false)).
-boot_fcgi(App, false)   -> undefined;
+boot_fcgi(_App, false)  -> undefined;
 boot_fcgi(App, true)    -> Fcgi     = wf:config(App, fcgi_exe, 'php-fpm'),    
                            FcgiHost = wf:config(App, fcgi_host, localhost),    
                            FcgiPort = wf:config(App, fcgi_port, 33000),  

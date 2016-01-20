@@ -6,7 +6,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([start_link/1,start_link/0]).
 -export([onload/1,onnew/2,topsort/1,watch/1,unwatch/1]).
--export([view_graph/1,app/1,parents/1,deps/1,source/1,is_view/1,view_files/1, source/1, controller_files/1]).
+-export([view_graph/1,app/1,parents/1,deps/1,source/1, source/2, is_view/1,view_files/1, controller_files/1]).
 -record(state,{graphs=#{}}).
 
 start_link() -> start_link([]).
@@ -111,7 +111,6 @@ controller_files(App) ->
   [code:ensure_loaded(M)||M<-Modules],
   [{source(App,M),M} || M <- Modules, not is_view(M), is_controller(App,M)].
 
-
 is_view(M) ->
   erlang:function_exported(M,dependencies,0) andalso 
   erlang:function_exported(M,source,0) andalso
@@ -120,23 +119,17 @@ is_view(M) ->
   erlang:function_exported(M,render,2).
 
 source(M) -> {S, _} = M:source(), S.
-source(App, M) when is_atom(App), is_atom(M) -> 
-  C = M:module_info(compile),
-  F = proplists:get_value(source,C),
-  source(atom_to_list(App),filename:split(F));
+source(App, M) 
+    when is_atom(App), is_atom(M) -> C = M:module_info(compile),
+                                     proplists:get_value(source,C).
   
-source(App, [H,"apps", App, "src", "controller"| R ]) -> filename:join([H,"apps", App, "src", "controller"|R]);
-source(App, [H|T])  ->  source(App,T).
-
-is_controller(App, M) when is_atom(App), is_atom(M) -> 
-  C = M:module_info(compile),
-  F = proplists:get_value(source,C),
-  is_controller(atom_to_list(App),filename:split(F));
-
+is_controller(App, M) 
+    when is_atom(App), is_atom(M) -> C = M:module_info(compile),
+                                     F = proplists:get_value(source,C),
+                                     is_controller(atom_to_list(App),filename:split(F));
 is_controller(App, []) -> false;
-is_controller(App, [H,"apps", App, "src", "controller"| R ]) -> true;
+is_controller(App, [H,"apps",App,"src","controller"|_]) -> true;
 is_controller(App, [H|T])  ->  is_controller(App,T).
-
 
 app(M) -> [_, "ebin", App |_] = lists:reverse(filename:split(code:which(M))), 
           list_to_atom(App).
