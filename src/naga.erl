@@ -32,10 +32,7 @@ stop(App)  -> case lists:member(App, wf:config(naga,watch,[])) of
               end.
 
 start(App) when is_atom(App) -> start([App]);
-start(Apps)-> DispatchApps = case read_dump_file(Apps) of 
-                                  {ok, Routes} -> wf:info(?MODULE,"Boot from binary route files.",[]), 
-                                             Routes; 
-                                  _ -> dispatchApps(Apps) end,
+start(Apps)-> DispatchApps = read_dump_file(Apps),
               _AppsInfo    = boot_apps(Apps),
               ProtoOpts    = [{env,[{applications, Apps} %,{appsInfo, AppsInfo}                      	  
                                    ,{dispatch, cowboy_router:compile(DispatchApps)}]},
@@ -177,7 +174,13 @@ opts(_App, H, Opts)
         when is_atom(H) -> Opts.
 
 read_dump_file(Apps)
-      when is_list(Apps)-> {ok, lists:flatten([case read_dump_file(A) of {ok, B} -> binary_to_term(B); _ -> [] end||A<-Apps])};
+      when is_list(Apps)-> L=lists:foldr(fun(A,Acc) -> 
+                                        case read_dump_file(A) of 
+                                          {ok, C} -> [C|Acc];
+                                          {error, enoent} -> [dispatchApps([A])|Acc]
+                                        end 
+                                       end, [], Apps),
+                           lists:flatten(L);
 read_dump_file(App)
      when is_atom(App)  -> Path = wf:f("apps/~s/priv/~s.routes.dat",[wf:to_list(App),wf:to_list(App)]), %%FIXME, window, deps?
                            case mad_repl:load_file(Path) of
