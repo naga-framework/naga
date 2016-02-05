@@ -97,17 +97,18 @@ set_cookies([{Name,Value,Path,TTL}|Cookies],Req)->
 
 handle(App,Mod,undefined,M,P,B) -> case erlang:function_exported(Mod,index,3) of 
                                     true -> handle(App,Mod,index,M,P,B); _-> Mod:main() end;
+handle(App,Mod,A,M,undefined,B) -> handle(App,Mod,A,M,[],B);
 handle(App,Mod,A,M,P,B)         -> case before(App,Mod,req_ctx(App,Mod,A,M,P,B)) of
                                       {ok, Ctx} -> {Mod:A(M,P,Ctx),Ctx}; 
                                       {error,E} -> error(E);
                                       {redirect, R} -> wf:redirect(R) end.
 
-req_ctx(App,Mod,A,M,P,B)  -> #{':application'=> App,
-                               ':method'     => M,
-                               ':controller' => Mod,
-                               ':action'     => A,
-                               ':params'     => P,                             
-                               ':bindings'   => B
+req_ctx(App,Mod,A,M,P,B)  -> #{'_application'=> App,
+                               '_method'     => M,
+                               '_controller' => Mod,
+                               '_action'     => A,
+                               '_params'     => P,                             
+                               '_bindings'   => B
                               }.
 
 before(App,Mod,Ctx) -> O = [], %%FIXME: filter config
@@ -123,9 +124,13 @@ before(App,Mod,Ctx) -> O = [], %%FIXME: filter config
 
 %%todo: middle, after filter?
 %%todo: not_found
-%%todo: {stream, Generator::function(), Acc0} 
+%%todo: {stream, Generator::function(), Acc0}
 %%todo: {jsonp, Callback::string(), Data::proplist()} 
 %%todo: {jsonp, Callback::string(), Data::proplist(), Headers::proplist()} 
+%%todo: dev mode, header([{<<"Cache-Control">>, <<"no-cache">>}])
+%%      reload current page ? if modfied (css/js/controller)
+%%todo: unit test, mad_eunit ? 
+%%todo check bullet?
 
 header([])        -> ok;
 header([{K,V}|T]) -> wf:header(K,V),header(T).
@@ -137,7 +142,7 @@ render({{S,Io,H},Ctx})
 render({ok,Ctx})                 -> render({{ok,[]},Ctx}); 
 render({{ok,V},Ctx})             -> render({{ok,[],V},Ctx});
 render({{ok,H,V},Ctx})           -> header(H),
-                                    #{':application':=App,':controller':=C,':action':=A} = Ctx,
+                                    #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
                                     render(#dtl{file={App,C,A,"html"}, bindings=V});
 render({{redirect,L},Ctx})       -> render({{redirect,L,[]},Ctx});
 render({{redirect,L,H},_})       -> header([H|{<<"Location">>,L}]),
@@ -151,7 +156,7 @@ render({{json_,V},Ctx})          -> render({{json_,V,[]},Ctx});
 render({{json_,V,H},Ctx})        -> render({{json_,V,H,200},Ctx});
 render({{json_,V,H,S},Ctx})      -> header(H++?CTYPE_JSON),
                                     wf:state(status,S),
-                                    #{':application':=App,':controller':=C,':action':=A} = Ctx,
+                                    #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
                                     wf_render:render(#dtl{app=App,file={App,C,A,"json"},bindings=V++maps:to_list(Ctx)});                                    
 render({{json,V},Ctx})           -> render({{json,V,[]},Ctx});
 render({{json,V,H},Ctx})         -> render({{json,V,H,200},Ctx});
@@ -159,7 +164,7 @@ render({{json,V,H,S},_})         -> header(H++?CTYPE_JSON),
                                     wf:state(status,S),
                                     wf:json(V);
 render({{action_other,L},Ctx})   -> #route{application=App,controller=C,action=A}=L,
-                                    #{':method':=M,':params':=P,':bindings':=B} = Ctx,
+                                    #{'_method':=M,'_params':=P,'_bindings':=B} = Ctx,
                                     try handle(App,C,A,M,P,B) catch C:E -> wf:error_page(C,E) end;
 render({{render_other,L},Ctx})   -> render({{render_other,L,[]},Ctx});
 render({{render_other,L,V},Ctx}) -> case L of 
@@ -171,7 +176,7 @@ render({{render_other,L,V},Ctx}) -> case L of
                                     end;                                    
 render({{js,V},Ctx})             -> render({{js,V,[]},Ctx});
 render({{js,V,H},Ctx})           -> header(H++?CTYPE_JS),
-                                    #{':application':=App,':controller':=C,':action':=A} = Ctx,
+                                    #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
                                     wf_render:render(#dtl{app=App,file={App,C,A,"js"},bindings=V++maps:to_list(Ctx)});
 
 %% todo: render css,xml,js,txt via dtl? 
