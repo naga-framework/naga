@@ -268,7 +268,13 @@ boot_fcgi(App, true)    -> Fcgi     = wf:config(App, fcgi_exe, 'php-fpm'),
                               fcgi_host=> FcgiHost,
                               fcgi_port=> FcgiPort 
                             }.
-
+to_num(Bin) ->
+    N = binary_to_list(Bin),
+    case string:to_float(N) of
+        {error,no_float} -> list_to_integer(N);
+        {F,_Rest} -> F
+    end.
+    
 dateformat()            -> erlydtl_dateformat:format("r").
 dateformat(Format)      -> erlydtl_dateformat:format(Format).
 dateformat(Date,Format) -> erlydtl_dateformat:format(Date,Format).
