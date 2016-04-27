@@ -95,7 +95,7 @@ doc_prefix(App)   -> wf:config(App,doc_prefix,   "/doc").
 doc_url(App,Uri)  -> string:join([doc_prefix(App),Uri],"").
 
 rest_prefix(App)  -> wf:config(App,rest_prefix,  "/rest").
-fcgi_prefix(App)  -> wf:config(App,fcgi_prefix,  "/fcgi").
+% fcgi_prefix(App)  -> wf:config(App,fcgi_prefix,  "/fcgi").
 n2o_prefix(App)   -> wf:config(App,n2o_prefix,   "/ws").
 n2o_url(App,Uri)  -> string:join([n2o_prefix(App),Uri],"").
 locale(App)       -> wf:config(App,static_prefix,none).
@@ -252,29 +252,30 @@ boot_app([App|T], Acc)  -> {ok, Modules} = application:get_key(App,modules),
                                        doc_prefix     => doc_prefix(App),
                                        rest_prefix    => rest_prefix(App),
                                        n2o_prefix     => n2o_prefix(App),
-                                       fcgi_prefix    => fcgi_prefix(App),
-                                       fcgi_opts      => boot_fcgi(App),
+                                       %fcgi_prefix    => fcgi_prefix(App),
+                                       %fcgi_opts      => boot_fcgi(App),
                                        domains        => domains(App)
                                       },
                            boot_app(T, [{App, AppInfo}|Acc]).
 
-boot_fcgi(App)          -> boot_fcgi(App, wf:config(App, fcgi_enabled, false)).
-boot_fcgi(_App, false)  -> undefined;
-boot_fcgi(App, true)    -> Fcgi     = wf:config(App, fcgi_exe, 'php-fpm'),    
-                           FcgiHost = wf:config(App, fcgi_host, localhost),    
-                           FcgiPort = wf:config(App, fcgi_port, 33000),  
-                           ex_fcgi:start(Fcgi, FcgiHost, FcgiPort),
-                           #{ fcgi_exe => Fcgi,
-                              fcgi_host=> FcgiHost,
-                              fcgi_port=> FcgiPort 
-                            }.
 to_num(Bin) ->
     N = binary_to_list(Bin),
     case string:to_float(N) of
         {error,no_float} -> list_to_integer(N);
         {F,_Rest} -> F
     end.
-    
+
+% boot_fcgi(App)          -> boot_fcgi(App, wf:config(App, fcgi_enabled, false)).
+% boot_fcgi(_App, false)  -> undefined;
+% boot_fcgi(App, true)    -> Fcgi     = wf:config(App, fcgi_exe, 'php-fpm'),    
+%                            FcgiHost = wf:config(App, fcgi_host, localhost),    
+%                            FcgiPort = wf:config(App, fcgi_port, 33000),  
+%                            ex_fcgi:start(Fcgi, FcgiHost, FcgiPort),
+%                            #{ fcgi_exe => Fcgi,
+%                               fcgi_host=> FcgiHost,
+%                               fcgi_port=> FcgiPort 
+%                             }.
+
 dateformat()            -> erlydtl_dateformat:format("r").
 dateformat(Format)      -> erlydtl_dateformat:format(Format).
 dateformat(Date,Format) -> erlydtl_dateformat:format(Date,Format).

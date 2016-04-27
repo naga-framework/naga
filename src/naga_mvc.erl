@@ -37,7 +37,8 @@ run(Req, #route{type=mvc,is_steroid=true}=Route) ->
     %FIXME: websocket port 
     wf:script(["var transition = {pid: '", wf:pickle(Pid), "', ",
                 "port:'", wf:to_list(wf:config(n2o,websocket_port,wf:config(n2o,port,8000))),"'}"]),
-    Ctx  = wf:init_context(Req),
+    Ctx0 = wf:init_context(Req),
+    Ctx  = Ctx0#cx{module=Module},
     Ctx1 = init(Ctx, false, WantSession),
     wf:actions(Ctx1#cx.actions),
     wf:context(Ctx1),
@@ -58,7 +59,8 @@ run(Req, #route{type=mvc,is_steroid=true}=Route) ->
 run(Req, #route{type=mvc,is_steroid=false}=Route) ->
     #route{application=App,controller=C,action=Act,arity=A,want_session=WantSession} = Route,
     wf:state(status,200),
-    Ctx  = wf:init_context(Req),
+    Ctx0 = wf:init_context(Req),
+    Ctx  = Ctx0#cx{module=C},
     Ctx1 = init(Ctx, false, WantSession),
     wf:context(Ctx1),
     Elements = case (Act == main) andalso (A == 0) of 
