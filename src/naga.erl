@@ -32,28 +32,34 @@ stop(App)  -> case lists:member(App, wf:config(naga,watch,[])) of
               end.
 
 start(App) when is_atom(App) -> start([App]);
-start(Apps)-> DispatchApps = read_dump_file(Apps),
-              _AppsInfo    = boot_apps(Apps),
-              ProtoOpts    = [{env,[{applications, Apps} %,{appsInfo, AppsInfo}                      	  
-                                   ,{dispatch, cowboy_router:compile(DispatchApps)}]},
-                              {middlewares, wf:config(naga,middlewares,[cowboy_router,cowboy_handler])}],
-              [start_listeners(App, ProtoOpts) || App <- Apps].
+start(Apps)-> [begin
+                Modules = wf:config(App,modules,[]),
+                [application:start(X)||X <- Modules],
+                Components = [App] ++ Modules,
+                DispatchApps = read_dump_file(Components),
+                io:format("~p~n",[DispatchApps]),
+                _AppsInfo    = boot_apps(Components),
+                ProtoOpts    = [{env,[{applications, {App,Modules}} %,{appsInfo, AppsInfo}                         
+                                     ,{dispatch, cowboy_router:compile(DispatchApps)}]},
+                                {middlewares, wf:config(naga,middlewares,[cowboy_router,cowboy_handler])}], 
+                start_listeners(App, ProtoOpts) end || App <- Apps].
 
-dispatchApps(Apps)-> lists:foldr(fun(App,Acc) ->                                       
-                        lists:foldr(fun(Domain,Bcc) ->
-                                      [{Domain, dispatch(App)}] ++ Bcc 
-                                     end, [], domains(App)) ++ Acc
-                                 end, [], Apps).
+dispatch(Components) -> 
+      App = hd(Components),
+      Rules = [service, revproxy, fcgi, rest, routes, view, doc, mvc],
+      D = lists:foldr(fun(Rule,Acc)-> dispatch(Rule,order(Components)) ++ Acc end,[],
+                   wf:config(App,rules,Rules)),
+      lists:foldr(fun(Domain,Bcc) -> [{Domain, lists:flatten(D)}] ++ Bcc end, [], domains(App)).
 
-dispatch(App)     -> Rules = [service, revproxy, fcgi, rest, route, view, doc, mvc],
-                     lists:foldr(fun(Rule,Acc)-> dispatch(Rule,App) ++ Acc end,[],
-                                 wf:config(App,rules,Rules)).
+order(A) -> [Y||{_,Y} <-lists:reverse(lists:ukeysort(1,[{wf:config(X,base_url,[]),X}||X<-A]))].
+            %%order by prefix
 
 start_listeners(App, ProtoOpts) ->
     case wf:config(App, listeners, []) of
         [] -> wf:info(?MODULE, "listeners notfound for app ~p []",[App]),            
-              listener(App, ?DEFAULT_LISTENER, ProtoOpts, []);
-        Listeners -> listener(App, Listeners, ProtoOpts, []) end.
+              skip;
+        Listeners ->
+              listener(App, Listeners, ProtoOpts, []) end.
 
 listener_name(Type,App) -> wf:atom([Type,App]).
 
@@ -85,8 +91,9 @@ source(M)         -> naga_load:source(M).
 app(M)            -> naga_load:app(M).
 route_file(App)   -> filename:join([priv_dir(App), lists:concat([wf:atom([App]), ".routes"])]).
 dump_file(App)    -> filename:join([priv_dir(App), lists:concat([wf:atom([App]), ".routes.dat"])]).
-dump_route(App)   -> File = dump_file(App), 
-                     B = term_to_binary(cowboy_router:compile(dispatchApps(App))),
+dump_route(App)   -> File = dump_file(App),
+                     Components = [App] ++ wf:config(App,modules,[]), 
+                     B = term_to_binary(cowboy_router:compile(dispatch(Components))),
                      file:write_file(File,B).
 static_prefix(App)-> wf:config(App,static_prefix,"/static").
 static_url(App,Uri)-> string:join([static_prefix(App),Uri],"").
@@ -138,9 +145,17 @@ actions(M)       -> Attr = M:module_info(attributes),
 is_steroid(M)    -> erlang:function_exported(M,event,1).
 
 split(F)         -> filename:split(F).
-url(App,M,main)  -> base_url(App,string:join(["/",wf:to_list(M)--wf:to_list([App,"_"]),"/[...]"],""));
-url(App,M,index) -> base_url(App,string:join(["/",wf:to_list(M)--wf:to_list([App,"_"]),"/[...]"],""));
-url(App,M,A)     -> base_url(App,string:join(["/",wf:to_list(M)--wf:to_list([App,"_"]),"/",wf:to_list(A),"/[...]"],"")).
+sub(A,M) when is_atom(A), is_atom(M) -> sub(wf:to_list(A), wf:to_list(M));
+sub(A,M)  -> case lists:prefix(A,M) of true -> M -- A; _ -> 
+                  re:replace(M, "_", "/", [global, {return, list}]) end.
+
+tr(A,P,N) -> lists:foldr(fun(P,Acc) -> [N|Acc];
+                            (X,Acc) -> [X|Acc] end, [], A).
+
+url(App,M,main)  -> base_url(App,string:join(["/",sub(App,M),"/[...]"],""));
+url(App,M,index) -> base_url(App,string:join(["/",sub(App,M),"/[...]"],""));
+url(App,M,A)     -> base_url(App,string:join(["/",sub(App,M),"/",wf:to_list(A),"/[...]"],"")).
+
 url(App,M)       -> case string:tokens(wf:to_list(M), "_") of
                      [_,"mail","view",Name,Ext|_] -> base_url(App,"/"++Name++"."++Ext);
                      _ -> {ok,Cwd} = file:get_cwd(), 
@@ -173,14 +188,10 @@ opts(App, H, Opts)
 opts(_App, H, Opts) 
         when is_atom(H) -> Opts.
 
-read_dump_file(Apps)
-      when is_list(Apps)-> L=lists:foldr(fun(A,Acc) -> 
-                                        case read_dump_file(A) of 
-                                          {ok, C} -> [C|Acc];
-                                          {error, enoent} -> [dispatchApps([A])|Acc]
-                                        end 
-                                       end, [], Apps),
-                           lists:flatten(L);
+read_dump_file(Components)
+      when is_list(Components)-> L = case read_dump_file(hd(Components)) of {ok, R} -> R;
+                                         {error, enoent} -> dispatch(Components) end,
+                                 lists:flatten(L);
 read_dump_file(App)
      when is_atom(App)  -> Path = wf:f("apps/~s/priv/~s.routes.dat",[wf:to_list(App),wf:to_list(App)]), %%FIXME, window, deps?
                            case mad_repl:load_file(Path) of
@@ -194,51 +205,65 @@ consult(App)            -> Path = wf:f("apps/~s/priv/~s.routes",[wf:to_list(App)
                                      {ok, mad_tpl:consult(ETSFile)};
                                 _ -> file:consult(route_file(App)) end.
 
-dispatch(route,     App)-> case consult(App) of
-                             {ok, Routes} ->    
-                                lists:foldr(fun
-                                              ({Code, Handler, Opts}, Acc) when is_integer(Code) ->
-                                                [{base_url(App,code_url(Code)), handler(App,Handler), opts(App,Handler,Opts)}] ++ Acc;                                   
-                                              ({Url, Handler, Opts},Acc) -> 
-                                                [{base_url(App,Url), handler(App,Handler), opts(App,Handler,Opts)}] ++ Acc                                   
-                                            end, 
-                                  [], lists:flatten(Routes));
-                             {error,_} = Err -> 
-                                wf:error(?MODULE, "Missing or invalid NAGA routes file: ~p~n~p~n", 
-                                [route_file(App), Err]), [] 
-                           end;
+dispatch(routes, Components)-> lists:foldr( fun(App,Acc) -> 
+                                    [case consult(App) of
+                                     {ok, Routes} ->    
+                                        lists:foldr(fun
+                                                      ({Code, Handler, Opts}, Acc) when is_integer(Code) ->
+                                                        [{base_url(App,code_url(Code)), handler(App,Handler), opts(App,Handler,Opts)}] ++ Acc;                                   
+                                                      ({Url, Handler, Opts},Acc) -> 
+                                                        [{base_url(App,Url), handler(App,Handler), opts(App,Handler,Opts)}] ++ Acc                                   
+                                                    end, 
+                                          [], lists:flatten(Routes));
+                                     {error,_} = Err -> 
+                                        wf:error(?MODULE, "Missing or invalid NAGA routes file: ~p~n~p~n", 
+                                        [route_file(App), Err]), [] 
+                                   end| Acc] 
+                                 end, [], Components);
 
-dispatch(view,      App)-> Views = files(view, App),                             
-                             lists:foldr(fun({_,M},Acc) ->                                  
-                                  [{url(App,M), wf:config(naga,bridge,naga_cowboy), 
-                                                #route{type=view,
-                                                       application=App,
-                                                       view=M,
-                                                       action=render,
-                                                       arity=0,
-                                                       want_session=false,
-                                                       is_steroid=false}}]++Acc
-                               end, [], Views);
+dispatch(view, Components) -> lists:foldr(fun(App,Bcc)->
+                              Views = files(view, App),                             
+                              [lists:foldr(fun({_,M},Acc) ->                                  
+                                          [{url(App,M), wf:config(naga,bridge,naga_cowboy), 
+                                                        #route{type=view,
+                                                               application=App,
+                                                               view=M,
+                                                               action=render,
+                                                               arity=0,
+                                                               want_session=false,
+                                                               is_steroid=false}}]++Acc
+                                           end, [], Views)|Bcc]
+                               end,[],Components);
 %FIXME
-dispatch(doc,      App)-> [{ base_url(App,doc_url(App,"/[:docname]")),                 wf:config(naga,bridge,naga_cowboy), [#route{type=doc,application=App}]}];
-
-dispatch(mvc,      App)-> Controllers = files(controller,App),
-                          lists:foldr(fun({_,M},Acc) ->
-                                          [{url(App,M,A), wf:config(naga,bridge,naga_cowboy),
-                                                          #route{type=mvc,
-                                                                 application=App,                                                                     
-                                                                 controller=M,
-                                                                 action=A,
-                                                                 arity=N,
-                                                                 want_session=want_session(M),
-                                                                 is_steroid=is_steroid(M)}} || {A,N} <- actions(M)]++Acc
-                                      end, [], Controllers) ++
-                           [{ base_url(App,n2o_url(App,"/:controller/:action/[...]")), wf:config(naga,stream,n2o_stream),  [] },
-                            { base_url(App,n2o_url(App,"/:controller/[...]")),         wf:config(naga,stream,n2o_stream),  [] },
-                            { base_url(App,n2o_url(App,"/[...]")),                     wf:config(naga,stream,n2o_stream),  [] },
-                            { base_url(App,"/:controller/:action/[...]"),              wf:config(naga,bridge,naga_cowboy), [] },
-                            { base_url(App,"/:controller/[...]"),                      wf:config(naga,bridge,naga_cowboy), [] },
-                            { base_url(App,"/[...]"),                                  wf:config(naga,bridge,naga_cowboy), [] }];
+dispatch(doc, Components)-> lists:foldr(fun(App,Acc)->
+                                [{ base_url(App,doc_url(App,"/[:docname]")), 
+                                    wf:config(naga,bridge,naga_cowboy), 
+                                      [#route{type=doc,application=App}]}] ++ Acc
+                            end,[],Components);
+%FIXME
+dispatch(mvc, Components)-> lists:foldr(fun(App,Acc)->
+                              Controllers = files(controller,App),
+                              io:format("MVC CTRL ~p~n",[Controllers]),
+                              [lists:foldr(fun({_,M},Acc) ->
+                                              [begin 
+                                                 Url = url(App,M,A),
+                                                 io:format("URL ~p  <- ~p~n",[Url,{App,M,A}]),
+                                                {Url, wf:config(naga,bridge,naga_cowboy),
+                                                              #route{type=mvc,
+                                                                     application=App,                                                                     
+                                                                     controller=M,
+                                                                     action=A,
+                                                                     arity=N,
+                                                                     want_session=want_session(M),
+                                                                     is_steroid=is_steroid(M)}} end || {A,N} <- actions(M)]++Acc
+                                          end, [], Controllers) ++
+                               [{ base_url(App,n2o_url(App,"/:controller/:action/[...]")), wf:config(naga,stream,n2o_stream),  [] },
+                                { base_url(App,n2o_url(App,"/:controller/[...]")),         wf:config(naga,stream,n2o_stream),  [] },
+                                { base_url(App,n2o_url(App,"/[...]")),                     wf:config(naga,stream,n2o_stream),  [] },
+                                { base_url(App,"/:controller/:action/[...]"),              wf:config(naga,bridge,naga_cowboy), [] },
+                                { base_url(App,"/:controller/[...]"),                      wf:config(naga,bridge,naga_cowboy), [] }]|Acc]
+                                %{ base_url(App,"/[...]"),                                  wf:config(naga,bridge,naga_cowboy), [] }
+                              end, [], Components);
 dispatch(      _, _App) -> [].
 
 boot_apps(Apps)         -> boot_app(Apps, []).
