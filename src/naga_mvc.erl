@@ -110,7 +110,8 @@ req_ctx(App,Mod,A,M,P,B)  -> #{'_application'=> App,
                                '_controller' => Mod,
                                '_action'     => A,
                                '_params'     => P,                             
-                               '_bindings'   => B
+                               '_bindings'   => B,
+                               '_base_url'   => wf:config(App,base_url,"/")
                               }.
 
 before(App,Mod,Ctx) -> O = [], %%FIXME: filter config
@@ -145,7 +146,7 @@ render({ok,Ctx})                 -> render({{ok,[]},Ctx});
 render({{ok,V},Ctx})             -> render({{ok,[],V},Ctx});
 render({{ok,H,V},Ctx})           -> header(H),
                                     #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
-                                    render(#dtl{file={App,C,A,"html"}, bindings=V});
+                                    render(#dtl{file={App,C,A,"html"}, bindings=V++maps:to_list(Ctx)});
 render({{redirect,L},Ctx})       -> render({{redirect,L,[]},Ctx});
 render({{redirect,L,H},_})       -> header([H|{<<"Location">>,L}]),
                                     wf:state(status,302),
