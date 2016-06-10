@@ -131,12 +131,15 @@ priv_dir(App)     -> case code:priv_dir(App) of
 
 want_session(M)  -> E = M:module_info(attributes), [R]=proplists:get_value(session,E,[true]), R. %% by default true
 default_action(M)-> E = M:module_info(attributes),
-                   case proplists:get_value(defaut_action,E) of 
+                   case proplists:get_value(default_action,E) of 
                     undefined -> case erlang:function_exported(M,index,3) of 
-                                  true  -> index;
+                                  true  -> {dft,index};
                                   false -> case erlang:function_exported(M,main,0) of 
-                                                true -> main; false -> {error, '404'} end end;
-                    Default -> Default end.
+                                                true  -> {dft,main}; 
+                                                false -> [] 
+                                           end 
+                                 end;
+                    [Default] -> {dft,Default} end.
 actions(M)       -> Attr = M:module_info(attributes), 
                     Actions = lists:usort(proplists:get_value(actions,Attr,[]) ++ [default_action(M)]),
                     E = M:module_info(exports),
@@ -149,19 +152,14 @@ sub(A,M) when is_atom(A), is_atom(M) -> sub(wf:to_list(A), wf:to_list(M));
 sub(A,M)  -> case lists:prefix(A,M) of true -> M -- A; _ -> 
                   re:replace(M, "_", "/", [global, {return, list}]) end.
 
-tr(A,P,N) -> lists:foldr(fun(P,Acc) -> [N|Acc];
-                            (X,Acc) -> [X|Acc] end, [], A).
-
-url(App,M,main)  -> base_url(App,string:join(["/",sub(App,M),"/[...]"],""));
-url(App,M,index) -> base_url(App,string:join(["/",sub(App,M),"/[...]"],""));
-url(App,M,A)     -> base_url(App,string:join(["/",sub(App,M),"/",wf:to_list(A),"/[...]"],"")).
-
-url(App,M)       -> case string:tokens(wf:to_list(M), "_") of
+url(App,M,{dft,A})-> base_url(App,string:join(["/",sub(App,M),"/[...]"],""));
+url(App,M,A)      -> base_url(App,string:join(["/",sub(App,M),"/",wf:to_list(A),"/[...]"],"")).
+url(App,M)        -> case string:tokens(wf:to_list(M), "_") of
                      [_,"mail","view",Name,Ext|_] -> base_url(App,"/"++Name++"."++Ext);
                      _ -> {ok,Cwd} = file:get_cwd(), 
                          F=((((split(naga:source(M))--split(Cwd))--split(base_dir(App)))--[sep()])--["src","view"]),
                          base_url(App,"/"++string:join(F,"/"))
-                    end. 
+                     end. 
 
 get_kv(K, O, D)  -> V = proplists:get_value(K,O,D), KV = {K,V}, {KV, O -- [KV]}.
 %module(A,C)      -> wf:atom([A,C]).
@@ -252,7 +250,7 @@ dispatch(mvc, Components)-> lists:foldr(fun(App,Acc)->
                                                               #route{type=mvc,
                                                                      application=App,                                                                     
                                                                      controller=M,
-                                                                     action=A,
+                                                                     action=case A of {dft,B} -> B; A -> A end,
                                                                      arity=N,
                                                                      want_session=want_session(M),
                                                                      is_steroid=is_steroid(M)}} end || {A,N} <- actions(M)]++Acc
@@ -264,6 +262,7 @@ dispatch(mvc, Components)-> lists:foldr(fun(App,Acc)->
                                 { base_url(App,"/:controller/[...]"),                      wf:config(naga,bridge,naga_cowboy), [] }]|Acc]
                                 %{ base_url(App,"/[...]"),                                  wf:config(naga,bridge,naga_cowboy), [] }
                               end, [], Components);
+
 dispatch(      _, _App) -> [].
 
 boot_apps(Apps)         -> boot_app(Apps, []).
