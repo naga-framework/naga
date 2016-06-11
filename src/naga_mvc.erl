@@ -134,7 +134,7 @@ before(App,Mod,Ctx) -> O = [], %%FIXME: filter config
 %%      reload current page ? if modfied (css/js/controller)
 %%todo: unit test, mad_eunit ? 
 %%todo check bullet?
-
+                            
 header([])        -> ok;
 header([{K,V}|T]) -> wf:header(K,V),header(T).
 
@@ -148,13 +148,11 @@ render({{ok,H,V},Ctx})           -> header(H),
                                     #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
                                     render(#dtl{file={App,C,A,"html"}, bindings=V++maps:to_list(Ctx)});
 render({{redirect,L},Ctx})       -> render({{redirect,L,[]},Ctx});
-render({{redirect,L,H},_})       -> header([H|{<<"Location">>,L}]),
-                                    wf:state(status,302),
-                                    render(#dtl{});
+render({{redirect,L,H},Ctx})     -> header(H++[{<<"Location">>,naga:location(L,Ctx)}]),
+                                    wf:state(status,302),[];
 render({{moved,L},Ctx})          -> render({{moved,L,[]},Ctx});
-render({{moved,L,H},_})          -> header([H|{<<"Location">>,L}]),
-                                    wf:state(status,301),
-                                    render(#dtl{});                                    
+render({{moved,L,H},Ctx})        -> header(H++[{<<"Location">>,naga:location(L,Ctx)}]),
+                                    wf:state(status,301),[];                                    
 render({{json_,V},Ctx})          -> render({{json_,V,[]},Ctx});
 render({{json_,V,H},Ctx})        -> render({{json_,V,H,200},Ctx});
 render({{json_,V,H,S},Ctx})      -> header(H++?CTYPE_JSON),

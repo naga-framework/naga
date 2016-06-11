@@ -289,17 +289,23 @@ to_num(Bin) ->
         {F,_Rest} -> F
     end.
 
-% boot_fcgi(App)          -> boot_fcgi(App, wf:config(App, fcgi_enabled, false)).
-% boot_fcgi(_App, false)  -> undefined;
-% boot_fcgi(App, true)    -> Fcgi     = wf:config(App, fcgi_exe, 'php-fpm'),    
-%                            FcgiHost = wf:config(App, fcgi_host, localhost),    
-%                            FcgiPort = wf:config(App, fcgi_port, 33000),  
-%                            ex_fcgi:start(Fcgi, FcgiHost, FcgiPort),
-%                            #{ fcgi_exe => Fcgi,
-%                               fcgi_host=> FcgiHost,
-%                               fcgi_port=> FcgiPort 
-%                             }.
-
 dateformat()            -> erlydtl_dateformat:format("r").
 dateformat(Format)      -> erlydtl_dateformat:format(Format).
 dateformat(Date,Format) -> erlydtl_dateformat:format(Date,Format).
+
+urlencode(Path,Params)  -> Qs= cow_qs:qs([{wf:to_binary(K),wf:to_binary(V)}||{K,V}<-Params]),
+                           P = wf:to_binary(Path),<<P/binary,$?,Qs/binary>>.
+%urldecode(U)            -> cow_qs:urldecode(U).
+urldecode(U)            -> {P,Qs} = cow_http:parse_fullpath(U),
+                           {P,[{wf:to_atom(K),V}||{K,V}<-cow_qs:parse_qs(Qs)]}.
+
+%% FIX maybe use a map instead of proplists here?
+location(L,Ctx) -> #{'_application':=App1,'_controller':=C1,'_action':=A1} = Ctx,
+                   {KV1,L1} = get_kv(application,L,App1), 
+                   {KV2,L2} = get_kv(controller,L1,C1),
+                   {KV3, P} = get_kv(action,L2,A1),
+                   case {KV1,KV2,KV3} of
+                     {{_,undefined},{_,undefined},{_,undefined}} -> wf:to_binary(L);
+                     {{_,A},{_,M},{_,F}} -> %FIX reverse routing vs route file?
+                        Path = base_url(wf:to_atom(A),string:join(["/",sub(wf:to_list(A),wf:to_list(M)),"/",wf:to_list(F)],"")), 
+                        naga:urlencode(Path,P) end.
