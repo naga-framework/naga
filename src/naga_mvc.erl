@@ -9,6 +9,7 @@
 
 transition(Actions) -> receive {'INIT',A} -> transition(A); {'N2O',Pid} -> Pid ! {actions,Actions} end.
 run(Req, []) ->
+
     wf:state(status,200),
     Pid = spawn(fun() -> transition([]) end),
     wf:script(["var transition = {pid: '", wf:pickle(Pid), "', ",
@@ -134,6 +135,24 @@ before(App,Mod,Ctx) -> O = [], %%FIXME: filter config
 %%      reload current page ? if modfied (css/js/controller)
 %%todo: unit test, mad_eunit ? 
 %%todo check bullet?
+
+i18n_undefined(X)  -> X. %% you can define a callback when the translation is undefined, here is default 
+trans(Ctx)         -> #{'_application':=A} = Ctx,
+                      Locale = maps:get('_lang', Ctx, wf:config(A,assume_locale,"en")),
+                      case wf:config(A,i18n,false) of
+                       false -> [{locale, Locale},{translation_fun, fun(X,_L) -> X end}];
+                       true  -> [{locale, Locale},
+                                 {translation_fun, fun(X,L) -> 
+                                                       case naga_lang:lookup(A,{wf:to_list(L),X}) of
+                                                        undefined -> {M,F} = wf:config(A,i18n_undefined,{?MODULE,i18n_undefined}),M:F(X);
+                                                        E -> E end
+                                                   end}] end.
+
+%% FIXME: themes support ?                          
+tpl({A,C,Ac,E},Ctx)-> wf:to_atom(wf:to_list(A)++
+                                 "_view_"++wf:to_list(C)++
+                                 "_"++wf:to_list(Ac)++
+                                 "_"++wf:to_list(E)).
                             
 header([])        -> ok;
 header([{K,V}|T]) -> wf:header(K,V),header(T).
@@ -143,22 +162,28 @@ render({{output,Io,H},Ctx})      -> header(H),Io;
 render({{S,Io,H},Ctx}) 
               when is_integer(S) -> wf:state(status,S),header(H),Io;
 render({ok,Ctx})                 -> render({{ok,[]},Ctx}); 
-render({{ok,V},Ctx})             -> render({{ok,[],V},Ctx});
-render({{ok,H,V},Ctx})           -> header(H),
+render({{ok,V},Ctx})             -> render({{ok,V,[]},Ctx});
+render({{ok,V,H},Ctx})           -> header(H),
                                     #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
-                                    render(#dtl{file={App,C,A,"html"}, bindings=V++maps:to_list(Ctx)});
+                                    Tpl = tpl({App,C,A,"html"},Ctx),
+                                    {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(Ctx)),
+                                    Io;
+                                    %render(#dtl{file={App,C,A,"html"}, bindings=V++maps:to_list(Ctx)});
 render({{redirect,L},Ctx})       -> render({{redirect,L,[]},Ctx});
 render({{redirect,L,H},Ctx})     -> header(H++[{<<"Location">>,naga:location(L,Ctx)}]),
                                     wf:state(status,302),[];
 render({{moved,L},Ctx})          -> render({{moved,L,[]},Ctx});
 render({{moved,L,H},Ctx})        -> header(H++[{<<"Location">>,naga:location(L,Ctx)}]),
                                     wf:state(status,301),[];                                    
-render({{json_,V},Ctx})          -> render({{json_,V,[]},Ctx});
-render({{json_,V,H},Ctx})        -> render({{json_,V,H,200},Ctx});
-render({{json_,V,H,S},Ctx})      -> header(H++?CTYPE_JSON),
+%% json d, render with DTL
+render({{jsond,V},Ctx})          -> render({{jsond,V,[]},Ctx});
+render({{jsond,V,H},Ctx})        -> render({{jsond,V,H,200},Ctx});
+render({{jsond,V,H,S},Ctx})      -> header(H++?CTYPE_JSON),
                                     wf:state(status,S),
                                     #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
-                                    wf_render:render(#dtl{app=App,file={App,C,A,"json"},bindings=V++maps:to_list(Ctx)});                                    
+                                    %wf_render:render(#dtl{app=App,file={App,C,A,"json"},bindings=V++maps:to_list(Ctx)});
+                                    Tpl = tpl({App,C,A,"json"},Ctx),
+                                    {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(Ctx)),Io;                                    
 render({{json,V},Ctx})           -> render({{json,V,[]},Ctx});
 render({{json,V,H},Ctx})         -> render({{json,V,H,200},Ctx});
 render({{json,V,H,S},_})         -> header(H++?CTYPE_JSON),
@@ -167,6 +192,7 @@ render({{json,V,H,S},_})         -> header(H++?CTYPE_JSON),
 render({{action_other,L},Ctx})   -> #route{application=App,controller=C,action=A}=L,
                                     #{'_method':=M,'_params':=P,'_bindings':=B} = Ctx,
                                     try handle(App,C,A,M,P,B) catch C:E -> wf:error_page(C,E) end;
+%%FIXME
 render({{render_other,L},Ctx})   -> render({{render_other,L,[]},Ctx});
 render({{render_other,L,V},Ctx}) -> case L of 
                                       #route{controller=[]} ->
@@ -178,9 +204,10 @@ render({{render_other,L,V},Ctx}) -> case L of
 render({{js,V},Ctx})             -> render({{js,V,[]},Ctx});
 render({{js,V,H},Ctx})           -> header(H++?CTYPE_JS),
                                     #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
-                                    wf_render:render(#dtl{app=App,file={App,C,A,"js"},bindings=V++maps:to_list(Ctx)});
+                                    Tpl = tpl({App,C,A,"js"},Ctx),
+                                    {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(Ctx)),Io;  
+                                    %wf_render:render(#dtl{app=App,file={App,C,A,"js"},bindings=V++maps:to_list(Ctx)});
 
-%% todo: render css,xml,js,txt via dtl? 
 render({#dtl{}=E,_})             -> wf_render:render(E);                                    
 render(E)                        -> wf_render:render(E).
 
