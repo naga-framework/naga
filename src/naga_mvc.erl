@@ -6,10 +6,10 @@
 -include_lib("n2o/include/wf.hrl").
 -include("naga.hrl").
 -export([run/2,transition/1]).
+-export([i18n_undefined/1]).
 
 transition(Actions) -> receive {'INIT',A} -> transition(A); {'N2O',Pid} -> Pid ! {actions,Actions} end.
 run(Req, []) ->
-
     wf:state(status,200),
     Pid = spawn(fun() -> transition([]) end),
     wf:script(["var transition = {pid: '", wf:pickle(Pid), "', ",
