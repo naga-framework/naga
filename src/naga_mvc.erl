@@ -134,8 +134,6 @@ before(App,Mod,Ctx) -> O = [], %%FIXME: filter config
 %%todo: middle, after filter?
 %%todo: not_found
 %%todo: {stream, Generator::function(), Acc0}
-%%todo: {jsonp, Callback::string(), Data::proplist()} 
-%%todo: {jsonp, Callback::string(), Data::proplist(), Headers::proplist()} 
 %%todo: dev mode, header([{<<"Cache-Control">>, <<"no-cache">>}])
 %%      reload current page ? if modfied (css/js/controller)
 %%todo: unit test, mad_eunit ? 
@@ -156,16 +154,17 @@ trans(Vars,Ctx)    -> #{'_application':=A} = Ctx,
                                                    end}] end.
 
 %% theme is an naga app with only views and static assets 
-%% FIXME: maybe base_url, static asset
-tpl({_,C,Ac,E},#{'_theme':=T})-> tpl(T,C,Ac,E);                       
-tpl({A,C,Ac,E},_) -> tpl(A,C,Ac,E).
-tpl(A,C,Ac,E) -> wf:to_atom(wf:to_list(A)++
-                 "_view_"++wf:to_list(C)++
-                 "_"++wf:to_list(Ac)++
-                 "_"++wf:to_list(E)). 
+%% FIXME: maybe base_url, static asset 
+%%        switch default static asset with the one from the theme
+tpl({_,C,Ac,E},#{'_theme':=T})   -> tpl(T,C,Ac,E);                       
+tpl({A,C,Ac,E},_)                -> tpl(A,C,Ac,E).
+tpl(A,C,Ac,E)                    -> wf:to_atom(wf:to_list(A)++
+                                    "_view_"++wf:to_list(C)++
+                                    "_"++wf:to_list(Ac)++
+                                    "_"++wf:to_list(E)). 
 
-header([])        -> ok;
-header([{K,V}|T]) -> wf:header(K,V),header(T).
+header([])                       -> ok;
+header([{K,V}|T])                -> wf:header(K,V),header(T).
 
 render({{output,Io},Ctx})        -> render({{output,Io,?CTYPE_PLAIN},Ctx});
 render({{output,Io,H},Ctx})      -> header(H),Io;
@@ -183,7 +182,7 @@ render({{redirect,L,H},Ctx})     -> header(H++[{<<"Location">>,naga:location(L,C
 render({{moved,L},Ctx})          -> render({{moved,L,[]},Ctx});
 render({{moved,L,H},Ctx})        -> header(H++[{<<"Location">>,naga:location(L,Ctx)}]),
                                     wf:state(status,301),[];                                    
-%% json d, render with DTL
+%% jsond, render with DTL
 render({{jsond,V},Ctx})          -> render({{jsond,V,[]},Ctx});
 render({{jsond,V,H},Ctx})        -> render({{jsond,V,H,200},Ctx});
 render({{jsond,V,H,S},Ctx})      -> header(H++?CTYPE_JSON),
@@ -196,6 +195,9 @@ render({{json,V,H},Ctx})         -> render({{json,V,H,200},Ctx});
 render({{json,V,H,S},_})         -> header(H++?CTYPE_JSON),
                                     wf:state(status,S),
                                     wf:json(V);
+render({{jsonp,C,V},Ctx})        -> render({{jsonp,C,V,[]},Ctx});
+render({{jsonp,C,V,H},Ctx})      -> header(H++?CTYPE_JSON),
+                                    wf:to_binary([wf:to_list(C),"(",wf:json(V),");"]);
 render({{action_other,L},Ctx})   
                   when is_map(L) -> P = maps:get(params,L,[]),
                                     {App1,C1,A1} = case [L,Ctx] of
@@ -223,7 +225,6 @@ render({{js,V,H},Ctx})           -> header(H++?CTYPE_JS),
                                     #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
                                     Tpl = tpl({App,C,A,"js"},Ctx),
                                     {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),Io;  
-                                    %wf_render:render(#dtl{app=App,file={App,C,A,"js"},bindings=V++maps:to_list(Ctx)});
 
 render({#dtl{}=E,_})             -> wf_render:render(E);                                    
 render(E)                        -> wf_render:render(E).
