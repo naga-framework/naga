@@ -48,6 +48,7 @@ run(Req, #route{type=mvc,is_steroid=true}=Route) ->
                   false  -> {M, _} = cowboy_req:method(Req),
                             {P, _} = cowboy_req:path_info(Req),
                             {B, _} = cowboy_req:bindings(Req),
+                            post_params(M),
                             try handle(App,Module,Act,M,P,B) catch C:E -> wf:error_page(C,E) end
                end,
     Html    = render(Elements),    
@@ -69,6 +70,7 @@ run(Req, #route{type=mvc,is_steroid=false}=Route) ->
                   false -> {M, _} = cowboy_req:method(Req),
                            {P, _} = cowboy_req:path_info(Req),
                            {B, _} = cowboy_req:bindings(Req),
+                           post_params(M),
                            try handle(App,C,Act,M,P,B) catch C:E -> wf:error_page(C,E) end
                end,    
     Html = render(Elements),
@@ -93,7 +95,10 @@ finish(C1,C2,true ,true ) -> wf:fold(finish,                    C1#cx.handlers  
 finish(C1,C2,false,true ) -> wf:fold(finish,no_route(           C1#cx.handlers) ,C2);
 finish(C1,C2,true ,false) -> wf:fold(finish,         no_session(C1#cx.handlers) ,C2);
 finish(C1,C2,false,false) -> wf:fold(finish,no_route(no_session(C1#cx.handlers)),C2).
- 
+
+post_params(<<"POST">>) -> wf:context(wf:fold(init,[{post_params,naga_post_params}],?CTX));
+post_params(_)          -> ok.
+
 set_cookies([],Req)-> Req;
 set_cookies([{Name,Value,Path,TTL}|Cookies],Req)->
     set_cookies(Cookies,wf:cookie_req(Name,Value,Path,TTL,Req)).
