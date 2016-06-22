@@ -302,13 +302,12 @@ urlencode(Path,Params)  -> Qs= cow_qs:qs([{wf:to_binary(K),wf:to_binary(V)}||{K,
 urldecode(U)            -> {P,Qs} = cow_http:parse_fullpath(U),
                            {P,[{wf:to_atom(K),V}||{K,V}<-cow_qs:parse_qs(Qs)]}.
 
-%% FIX maybe use a map instead of proplists here?
-location(L,Ctx) -> #{'_application':=App1,'_controller':=C1,'_action':=A1} = Ctx,
-                   {KV1,L1} = get_kv(application,L,App1), 
-                   {KV2,L2} = get_kv(controller,L1,C1),
-                   {KV3, P} = get_kv(action,L2,A1),
-                   case {KV1,KV2,KV3} of
-                     {{_,undefined},{_,undefined},{_,undefined}} -> wf:to_binary(L);
-                     {{_,A},{_,M},{_,F}} -> %FIX reverse routing vs route file?
-                        Path = base_url(wf:to_atom(A),string:join(["/",sub(wf:to_list(A),wf:to_list(M)),"/",wf:to_list(F)],"")), 
-                        naga:urlencode(Path,P) end.
+%%FIXME: reverse routing
+location(L,Ctx) when is_binary(L) -> L;
+location(L,Ctx) when is_list(L) -> wf:to_binary(L); 
+location(#{app:=App,controller:=C,action:=A}=L,_) -> Path = path(App,C,A), naga:urlencode(Path,maps:get(params,L,[]));
+location(#{         controller:=C,action:=A}=L,#{'_application':=App}) -> Path = path(App,C,A), naga:urlencode(Path,maps:get(params,L,[]));
+location(#{                       action:=A}=L,#{'_application':=App, '_controller':=C}) -> Path = path(App,C,A), naga:urlencode(Path,maps:get(params,L,[])).
+
+path(App,M,A) -> 
+ base_url(wf:to_atom(App),string:join(["/",sub(wf:to_list(App),wf:to_list(M)),"/",wf:to_list(A)],"")). 
