@@ -112,7 +112,7 @@ req_ctx(App,Mod,A,M,P,B)  -> #{'_application'=> App,
                                '_action'     => A,
                                '_params'     => P,                             
                                '_bindings'   => B,
-                               '_base_url'   => wf:config(App,base_url,"/")
+                               '_base_url'   => case wf:config(App,base_url,"") of "/" -> ""; E -> E end
                               }.
 
 before(App,Mod,Ctx) -> O = [], %%FIXME: filter config
@@ -143,7 +143,8 @@ trans(Vars,Ctx)    -> #{'_application':=A} = Ctx,
                       case wf:config(A,i18n,false) of
                        false -> [{locale, Locale},{translation_fun, fun(X,_L) -> X end}];
                        true  -> [{locale, Locale},
-                                 {translation_fun, fun(X,L) -> 
+                                 {translation_fun, fun(X,undefined) -> X;
+                                                      (X,L) -> 
                                                        case naga_lang:lookup(A,{wf:to_list(L),X}) of
                                                         undefined -> {M,F} = wf:config(A,i18n_undefined,{?MODULE,i18n_undefined}),M:F(X);
                                                         E -> E end
