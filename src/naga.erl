@@ -82,6 +82,9 @@ listener(App, [{Proto, Opts}|T], ProtoOpts, Acc) ->
             io:format("Unknown Error: ~p\r\n",[X]), halt(abort,[])
     end.
 
+module_info(M,T)  -> case catch M:module_info(T) of 
+                      {'EXIT', Err} -> io:format("Error ~p~n",[Err]),[]; E -> E end.
+
 sep()             -> "/". %%FIXME: linux/unix/macosx ok, windows?
 apps()            -> wf:config(naga,watch,[]).
 watch(App)        -> naga_load:watch(App).
@@ -129,8 +132,8 @@ priv_dir(App)     -> case code:priv_dir(App) of
                        Dir       -> Dir
                      end.
 
-want_session(M)  -> E = M:module_info(attributes), [R]=proplists:get_value(session,E,[true]), R. %% by default true
-default_action(M)-> E = M:module_info(attributes),
+want_session(M)  -> E = module_info(M,attributes), [R]=proplists:get_value(session,E,[true]), R. %% by default true
+default_action(M)-> E = module_info(M,attributes),
                    case proplists:get_value(default_action,E) of 
                     undefined -> case erlang:function_exported(M,index,3) of 
                                   true  -> {dft,index};
@@ -140,9 +143,9 @@ default_action(M)-> E = M:module_info(attributes),
                                            end 
                                  end;
                     [Default] -> {dft,Default} end.
-actions(M)       -> Attr = M:module_info(attributes), 
+actions(M)       -> Attr = module_info(M,attributes), 
                     Actions = lists:usort(proplists:get_value(actions,Attr,[]) ++ [default_action(M)]),
-                    E = M:module_info(exports),
+                    E = module_info(M,exports),
                     [{X,proplists:get_value(X,E)}|| X <- Actions].
                     %[ X ||{N,A} = X <- M:module_info(exports), A == 3 ]. 
 is_steroid(M)    -> erlang:function_exported(M,event,1).
