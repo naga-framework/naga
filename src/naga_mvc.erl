@@ -155,12 +155,15 @@ trans(Vars,Ctx)    -> #{'_application':=A} = Ctx,
                                                         E -> E end
                                                    end}] end.
 
-%% FIXME: themes support ?                          
-tpl({A,C,Ac,E},Ctx)-> wf:to_atom(wf:to_list(A)++
-                                 "_view_"++wf:to_list(C)++
-                                 "_"++wf:to_list(Ac)++
-                                 "_"++wf:to_list(E)).
-                            
+%% theme is an naga app with only views and static assets 
+%% FIXME: maybe base_url, static asset
+tpl({_,C,Ac,E},#{'_theme':=T})-> tpl(T,C,Ac,E);                       
+tpl({A,C,Ac,E},_) -> tpl(A,C,Ac,E).
+tpl(A,C,Ac,E) -> wf:to_atom(wf:to_list(A)++
+                 "_view_"++wf:to_list(C)++
+                 "_"++wf:to_list(Ac)++
+                 "_"++wf:to_list(E)). 
+
 header([])        -> ok;
 header([{K,V}|T]) -> wf:header(K,V),header(T).
 
@@ -173,9 +176,7 @@ render({{ok,V},Ctx})             -> render({{ok,V,[]},Ctx});
 render({{ok,V,H},Ctx})           -> header(H),
                                     #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
                                     Tpl = tpl({App,C,A,"html"},Ctx),
-                                    {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),
-                                    Io;
-                                    %render(#dtl{file={App,C,A,"html"}, bindings=V++maps:to_list(Ctx)});
+                                    {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),Io;
 render({{redirect,L},Ctx})       -> render({{redirect,L,[]},Ctx});
 render({{redirect,L,H},Ctx})     -> header(H++[{<<"Location">>,naga:location(L,Ctx)}]),
                                     wf:state(status,302),[];
@@ -188,7 +189,6 @@ render({{jsond,V,H},Ctx})        -> render({{jsond,V,H,200},Ctx});
 render({{jsond,V,H,S},Ctx})      -> header(H++?CTYPE_JSON),
                                     wf:state(status,S),
                                     #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
-                                    %wf_render:render(#dtl{app=App,file={App,C,A,"json"},bindings=V++maps:to_list(Ctx)});
                                     Tpl = tpl({App,C,A,"json"},Ctx),
                                     {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),Io;                                    
 render({{json,V},Ctx})           -> render({{json,V,[]},Ctx});
@@ -196,18 +196,28 @@ render({{json,V,H},Ctx})         -> render({{json,V,H,200},Ctx});
 render({{json,V,H,S},_})         -> header(H++?CTYPE_JSON),
                                     wf:state(status,S),
                                     wf:json(V);
-render({{action_other,L},Ctx})   -> #route{application=App,controller=C,action=A}=L,
-                                    #{'_method':=M,'_params':=P,'_bindings':=B} = Ctx,
-                                    try handle(App,C,A,M,P,B) catch C:E -> wf:error_page(C,E) end;
-%%FIXME
+render({{action_other,L},Ctx})   
+                  when is_map(L) -> P = maps:get(params,L,[]),
+                                    {App1,C1,A1} = case [L,Ctx] of
+                                                    [#{app:=App,controller:=C,action:=A},_] -> {App,C,A};
+                                                    [#{         controller:=C,action:=A},#{'_application':=App}] -> {App,C,A};
+                                                    [#{                       action:=A},#{'_application':=App, '_controller':=C}] -> {App,C,A}
+                                                   end,
+                                    #{'_method':=M,'_bindings':=B} = Ctx,
+                                    try handle(App1,C1,A1,M,P,B) catch C:E -> wf:error_page(C,E) end;
+
 render({{render_other,L},Ctx})   -> render({{render_other,L,[]},Ctx});
-render({{render_other,L,V},Ctx}) -> case L of 
-                                      #route{controller=[]} ->
-                                        #route{application=App,controller=C,action=A}=L,
-                                        wf_render:render(#dtl{app=App,file={App,C,A,"html"},bindings=V++maps:to_list(Ctx)});
-                                      #route{controller=Module} ->                                         
-                                        {ok,Html} = Module:render(V++maps:to_list(Ctx)), Html
-                                    end;                                    
+render({{render_other,L,V},Ctx}) 
+                  when is_map(L) -> P = maps:get(params,L,[]),
+                                    {App1,C1,A1} = case [L,Ctx] of
+                                                      [#{app:=App,controller:=C,action:=A},_] -> {App,C,A};
+                                                      [#{         controller:=C,action:=A},#{'_application':=App}] -> {App,C,A};
+                                                      [#{                       action:=A},#{'_application':=App, '_controller':=C}] -> {App,C,A}
+                                                   end,
+                                    Ext = maps:get('_ext',L,"html"),
+                                    Tpl = tpl({App1,C1,A1,Ext},Ctx),
+                                    {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),Io;
+
 render({{js,V},Ctx})             -> render({{js,V,[]},Ctx});
 render({{js,V,H},Ctx})           -> header(H++?CTYPE_JS),
                                     #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
