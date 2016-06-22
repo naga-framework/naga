@@ -197,7 +197,7 @@ render({{json,V,H,S},_})         -> header(H++?CTYPE_JSON),
                                     wf:json(V);
 render({{jsonp,C,V},Ctx})        -> render({{jsonp,C,V,[]},Ctx});
 render({{jsonp,C,V,H},Ctx})      -> header(H++?CTYPE_JSON),
-                                    wf:to_binary([wf:to_list(C),"(",wf:json(V),");"]);
+                                    [wf:to_binary(C),<<"(">>,wf:json(V),<<");">>];
 render({{action_other,L},Ctx})   
                   when is_map(L) -> P = maps:get(params,L,[]),
                                     {App1,C1,A1} = case [L,Ctx] of
