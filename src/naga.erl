@@ -311,3 +311,54 @@ location(#{                       action:=A}=L,#{'_application':=App, '_controll
 
 path(App,M,A) -> 
  base_url(wf:to_atom(App),string:join(["/",sub(wf:to_list(App),wf:to_list(M)),"/",wf:to_list(A)],"")). 
+
+%%from simple bridge
+% deep_post_params() ->
+%     Params = wf:p(),
+%     parse_deep_post_params(Params, []).
+
+% deep_post_param(Path) ->
+%     find_deep_post_param(Path, deep_post_params()).
+
+deep_post_param(Path,Params) ->
+    Parsed = parse_deep_post_params(Params, []),
+    find_deep_post_param(Path, Parsed).
+
+find_deep_post_param([], Params) ->
+    Params;
+find_deep_post_param([Index|Rest], Params) when is_integer(Index) ->
+    find_deep_post_param(Rest, lists:nth(Index, Params));
+find_deep_post_param([Index|Rest], Params) when is_list(Index) ->
+    find_deep_post_param(Rest, proplists:get_value(Index, Params)).
+
+parse_deep_post_params([], Acc) ->
+    Acc;
+parse_deep_post_params([{Key, Value}|Rest], Acc) ->
+    case re:run(Key, "^(\\w+)(?:\\[([\\w-\\[\\]]+)\\])?$", [{capture, all_but_first, list}]) of
+        {match, [Key]} ->
+            parse_deep_post_params(Rest, [{Key, Value}|Acc]);
+        {match, [KeyName, Path]} ->
+            PathList = re:split(Path, "\\]\\[", [{return, list}]),
+            parse_deep_post_params(Rest, insert_into(Acc, [KeyName|PathList], Value))
+    end.
+
+insert_into(_List, [], Value) ->
+    Value;
+insert_into(undefined, PathList, Value) ->
+    insert_into([], PathList, Value);
+insert_into(N, PathList, Value) when is_integer(N) ->
+    insert_into([], PathList, Value);
+insert_into(List, [ThisKey|Rest], Value) ->
+    case catch list_to_integer(ThisKey) of
+        {'EXIT', _} ->
+            ExistingVal = proplists:get_value(ThisKey, List),
+            [{ThisKey, insert_into(ExistingVal, Rest, Value)}|
+                proplists:delete(ThisKey, List)];
+        N when N < erlang:length(List) ->
+            ExistingVal = lists:nth(N+1, List),
+            lists:sublist(List, N) ++ [insert_into(ExistingVal, Rest, Value)|
+                lists:nthtail(N+1, List)];
+        N when N >= erlang:length(List) ->
+            List ++ lists:reverse([insert_into(undefined, Rest, Value)|
+                    lists:seq(0, N - erlang:length(List) - 1)])
+    end.
