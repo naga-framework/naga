@@ -96,6 +96,7 @@ finish(C1,C2,false,true ) -> wf:fold(finish,no_route(           C1#cx.handlers) 
 finish(C1,C2,true ,false) -> wf:fold(finish,         no_session(C1#cx.handlers) ,C2);
 finish(C1,C2,false,false) -> wf:fold(finish,no_route(no_session(C1#cx.handlers)),C2).
 
+post_params(<<"PUT">>)  -> wf:context(wf:fold(init,[{post_params,naga_post_params}],?CTX));
 post_params(<<"POST">>) -> wf:context(wf:fold(init,[{post_params,naga_post_params}],?CTX));
 post_params(_)          -> ok.
 
