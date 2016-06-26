@@ -34,7 +34,7 @@ stop(App)  -> case lists:member(App, wf:config(naga,watch,[])) of
 start(App) when is_atom(App) -> start([App]);
 start(Apps)-> [begin
                 Modules = wf:config(App,modules,[]),
-                [application:start(X)||X <- Modules],
+                %%[application:start(X)||X <- Modules],
                 Components = [App] ++ Modules,
                 DispatchApps = read_dump_file(Components),
                 io:format("~p~n",[DispatchApps]),
@@ -305,20 +305,21 @@ urldecode(U)            -> {P,Qs} = cow_http:parse_fullpath(U),
 %%FIXME: reverse routing
 location(L,Ctx) when is_binary(L) -> L;
 location(L,Ctx) when is_list(L) -> wf:to_binary(L); 
-location(#{app:=App,controller:=C,action:=A}=L,_) -> Path = path(App,C,A), naga:urlencode(Path,maps:get(params,L,[]));
-location(#{         controller:=C,action:=A}=L,#{'_application':=App}) -> Path = path(App,C,A), naga:urlencode(Path,maps:get(params,L,[]));
-location(#{                       action:=A}=L,#{'_application':=App, '_controller':=C}) -> Path = path(App,C,A), naga:urlencode(Path,maps:get(params,L,[])).
+location(#{app:=App,controller:=C,action:=A}=L,_) -> P=maps:get(path_info,L),Path = path(App,C,A,P), naga:urlencode(Path,maps:get(params,L,[]));
+location(#{         controller:=C,action:=A}=L,#{'_application':=App}) -> P=maps:get(path_info,L),Path = path(App,C,A,P), naga:urlencode(Path,maps:get(params,L,[]));
+location(#{                       action:=A}=L,#{'_application':=App, '_controller':=C}) -> P=maps:get(path_info,L),Path = path(App,C,A,P), naga:urlencode(Path,maps:get(params,L,[])).
 
-path(App,M,A) -> 
- base_url(wf:to_atom(App),string:join(["/",sub(wf:to_list(App),wf:to_list(M)),"/",wf:to_list(A)],"")). 
+path(App,M,A,P) -> 
+ Path = base_url(wf:to_atom(App),string:join(["/",sub(wf:to_list(App),wf:to_list(M)),"/",wf:to_list(A)],"")),
+ string:join([Path, string:join([wf:to_list(X)||X<-P],"/")],"/").
 
 %%from simple bridge
-% deep_post_params() ->
-%     Params = wf:p(),
-%     parse_deep_post_params(Params, []).
+deep_post_params() ->
+    Params = wf:p(),
+    parse_deep_post_params(Params, []).
 
-% deep_post_param(Path) ->
-%     find_deep_post_param(Path, deep_post_params()).
+deep_post_param(Path) ->
+    find_deep_post_param(Path, deep_post_params()).
 
 deep_post_param(Path,Params) ->
     Parsed = parse_deep_post_params(Params, []),
@@ -335,7 +336,7 @@ parse_deep_post_params([], Acc) ->
     Acc;
 parse_deep_post_params([{Key, Value}|Rest], Acc) ->
     case re:run(Key, "^(\\w+)(?:\\[([\\w-\\[\\]]+)\\])?$", [{capture, all_but_first, list}]) of
-        {match, [Key]} ->
+        {match, [_]} ->
             parse_deep_post_params(Rest, [{Key, Value}|Acc]);
         {match, [KeyName, Path]} ->
             PathList = re:split(Path, "\\]\\[", [{return, list}]),
