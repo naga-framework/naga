@@ -75,6 +75,7 @@ run(Req, #route{type=mvc,is_steroid=false}=Route) ->
                end,    
     Html = render(Elements),
     Ctx2 = finish(Ctx,?CTX, false, WantSession),
+    set_sid(WantSession),
     Req2 = wf:response(Html,set_cookies(wf:cookies(),Ctx2#cx.req)),
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2);
 
@@ -99,6 +100,13 @@ finish(C1,C2,false,false) -> wf:fold(finish,no_route(no_session(C1#cx.handlers))
 post_params(<<"PUT">>)  -> wf:context(wf:fold(init,[{post_params,naga_post_params}],?CTX));
 post_params(<<"POST">>) -> wf:context(wf:fold(init,[{post_params,naga_post_params}],?CTX));
 post_params(_)          -> ok.
+
+set_sid(true) -> Name = n2o_session:session_cookie_name(site),
+                 Value= wf:session_id(),
+                 Path = "/",
+                 TTL  = 2147483647,
+                 wf:cookie(Name,Value,Path,TTL);
+set_sid(_) -> ok.
 
 set_cookies([],Req)-> Req;
 set_cookies([{Name,Value,Path,TTL}|Cookies],Req)->
