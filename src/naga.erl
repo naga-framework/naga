@@ -31,6 +31,11 @@ stop(App)  -> case lists:member(App, wf:config(naga,watch,[])) of
                 false -> ok 
               end.
 
+trans(_,X,undefined) -> X;
+trans(A,X,L)         -> case naga_lang:lookup(A,{wf:to_list(L),X}) of
+                          undefined -> {M,F} = wf:config(A,i18n_undefined,{naga_mvc,i18n_undefined}),M:F(X);
+                          E -> E end.
+
 start(App) when is_atom(App) -> start([App]);
 start(Apps)-> [begin
                 Modules = wf:config(App,modules,[]),
@@ -363,3 +368,7 @@ insert_into(List, [ThisKey|Rest], Value) ->
             List ++ lists:reverse([insert_into(undefined, Rest, Value)|
                     lists:seq(0, N - erlang:length(List) - 1)])
     end.
+
+to_seconds()  -> to_seconds(calendar:local_time()).
+to_seconds(D) -> calendar:datetime_to_gregorian_seconds(D).
+to_time(S)    -> calendar:gregorian_seconds_to_datetime(S).
