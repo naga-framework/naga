@@ -218,10 +218,10 @@ dispatch(routes, Components)-> lists:foldr( fun(App,Acc) ->
                                                       ({Code, Handler, Opts}, Acc) when is_integer(Code) ->
                                                         [{base_url(App,code_url(Code)), handler(App,Handler), opts(App,Handler,Opts)}] ++ Acc;                                   
                                                       ({Url, Handler, Opts},Acc) -> 
-                                                        O = opts(App,Handler,Opts),
+                                                        O = opts(App,Handler,Opts), 
                                                         [{base_url(App,Url), handler(App,Handler), O}] ++ 
-                                                        case O of 
-                                                          #route{is_steroid=true} -> [{ base_url(App,n2o_url(App,Url)), wf:config(naga,stream,n2o_stream), []}];
+                                                        case O of #route{is_steroid=true} -> 
+                                                          [{ base_url(App,n2o_url(App,Url)), wf:config(naga,stream,n2o_stream), O}];
                                                           _ -> [] end ++ Acc                                   
                                                     end, 
                                           [], lists:flatten(Routes));
