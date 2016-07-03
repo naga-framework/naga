@@ -35,9 +35,8 @@ run(Req, #route{type=mvc,is_steroid=true}=Route) ->
     #route{application=App,controller=Module,action=Act,arity=A,want_session=WantSession}=Route,
     wf:state(status,200),
     Pid = spawn(fun() -> transition([]) end),
-    %FIXME: websocket port 
     wf:script(["var transition = {pid: '", wf:pickle(Pid), "', ",
-                "port:'", wf:to_list(wf:config(n2o,websocket_port,wf:config(n2o,port,8000))),"'}"]),
+                "port:'", wf:to_list(wf:config(App,websocket_port,wf:config(App,port,8000))),"'}"]),
     Ctx0 = wf:init_context(Req),
     Ctx  = Ctx0#cx{module=Module},
     Ctx1 = init(Ctx, false, WantSession),
@@ -105,6 +104,10 @@ set_sid(true) -> Name = n2o_session:session_cookie_name(site),
                  Value= wf:session_id(),
                  Path = "/",
                  TTL  = 2147483647,
+                 % NOTE: Infinity-expire cookie will allow to clean up all session cookies
+                 %       by request from browser so we don't need to sweep them on server.
+                 %       Actually we should anyway to cleanup outdated cookies
+                 %       that will never be requested.
                  wf:cookie(Name,Value,Path,TTL);
 set_sid(_) -> ok.
 
@@ -126,6 +129,7 @@ req_ctx(App,Mod,A,M,P,B)  -> #{'_application'=> App,
                                '_action'     => A,
                                '_params'     => P,                             
                                '_bindings'   => B,
+                               script        => case wf:script() of undefined -> <<>>; S -> S end,
                                '_base_url'   => case wf:config(App,base_url,"") of "/" -> ""; E -> E end
                               }.
 
