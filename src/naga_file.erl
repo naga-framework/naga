@@ -87,7 +87,7 @@ info(#ftp{status= <<"recv">>}=FTP,Req,State) -> {reply,wf:format(FTP),Req,State}
 info(#ftp{status= <<"relay">>}=FTP,Req,State) -> {reply,wf:format(FTP),Req, State};
 
 info(Message,Req,State) -> 
-    wf:info(?MODULE, "Info Unknown message: ~s",[p:n(Message)]),
+    wf:info(?MODULE, "Info Unknown message: ~s",[Message]),
     {unknown,Message,Req,State}.
 
 % N2O Handlers
