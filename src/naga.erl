@@ -4,6 +4,7 @@
 -behaviour(application).
 -export([start/2, stop/1, init/1, watch/1, unwatch/1]).
 -compile(export_all).
+-include_lib("n2o/include/wf.hrl").
 -include("naga.hrl").
 
 -define(CHILD(I, Type, Args), {I, {I, start_link, Args}, permanent, 5000, Type, [I]}).
@@ -222,6 +223,7 @@ dispatch(routes, Components)-> lists:foldr( fun(App,Acc) ->
                                                         [{base_url(App,Url), handler(App,Handler), O}] ++ 
                                                         case O of #route{is_steroid=true} -> 
                                                           [{ base_url(App,n2o_url(App,Url)), wf:config(naga,stream,n2o_stream), O}];
+                                                          %naga_multipart -> [{base_url(App,Url), wf:config(naga,multipart,naga_multipart), O}];
                                                           _ -> [] end ++ Acc                                   
                                                     end, 
                                           [], lists:flatten(Routes));
@@ -322,13 +324,24 @@ path(App,M,A,P) ->
  Path = base_url(wf:to_atom(App),string:join(["/",sub(wf:to_list(App),wf:to_list(M)),"/",wf:to_list(A)],"")),
  string:join([Path, string:join([wf:to_list(X)||X<-P],"/")],"/").
 
-%%from simple bridge
-deep_post_params() ->
-    Params = wf:p(),
+% post param
+
+post_params()   -> ?CTX#cx.form.  %% multipart | list().
+post_param(K)   -> proplists:get_value(wf:to_binary(K),?CTX#cx.form).
+post_param(K,D) -> proplists:get_value(wf:to_binary(K),?CTX#cx.form,D).
+
+%%FIXME: ?
+%% Get the value of a given "deep" POST parameter. 
+%% This function parses parameters that have numerical 
+%% or labeled indices, such as "widget[4][name]", 
+%% and returns either a value or a set of nested lists 
+%% (for numerical indices) and proplists (for string indices).
+deep_post_param() ->
+    Params = post_params(),
     parse_deep_post_params(Params, []).
 
 deep_post_param(Path) ->
-    find_deep_post_param(Path, deep_post_params()).
+    find_deep_post_param(Path, deep_post_param()).
 
 deep_post_param(Path,Params) ->
     Parsed = parse_deep_post_params(Params, []),
@@ -376,3 +389,5 @@ insert_into(List, [ThisKey|Rest], Value) ->
 to_seconds()  -> to_seconds(calendar:local_time()).
 to_seconds(D) -> calendar:datetime_to_gregorian_seconds(D).
 to_time(S)    -> calendar:gregorian_seconds_to_datetime(S).
+
+

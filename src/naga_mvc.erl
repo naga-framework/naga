@@ -47,7 +47,7 @@ run(Req, #route{type=mvc,is_steroid=true}=Route) ->
                   false  -> {M, _} = cowboy_req:method(Req),
                             {P, _} = cowboy_req:path_info(Req),
                             {B, _} = cowboy_req:bindings(Req),
-                            post_params(M),
+                            post_params(Route,M),
                             try handle(App,Module,Act,M,P,B) catch C:E -> wf:error_page(C,E) end
                end,
     Html    = render(Elements),    
@@ -69,7 +69,7 @@ run(Req, #route{type=mvc,is_steroid=false}=Route) ->
                   false -> {M, _} = cowboy_req:method(Req),
                            {P, _} = cowboy_req:path_info(Req),
                            {B, _} = cowboy_req:bindings(Req),
-                           post_params(M),
+                           post_params(Route,M),
                            try handle(App,C,Act,M,P,B) catch C:E -> wf:error_page(C,E) end
                end,    
     Html = render(Elements),
@@ -96,9 +96,14 @@ finish(C1,C2,false,true ) -> wf:fold(finish,no_route(           C1#cx.handlers) 
 finish(C1,C2,true ,false) -> wf:fold(finish,         no_session(C1#cx.handlers) ,C2);
 finish(C1,C2,false,false) -> wf:fold(finish,no_route(no_session(C1#cx.handlers)),C2).
 
-post_params(<<"PUT">>)  -> wf:context(wf:fold(init,[{post_params,naga_post_params}],?CTX));
-post_params(<<"POST">>) -> wf:context(wf:fold(init,[{post_params,naga_post_params}],?CTX));
-post_params(_)          -> ok.
+post_params(S,<<"PUT">>)  -> C=fold(S,init,[{post_params,naga_post_param}],?CTX),wf:context(C);
+post_params(S,<<"POST">>) -> C=fold(S,init,[{post_params,naga_post_param}],?CTX),wf:context(C);
+post_params(_,_)          -> ok.
+
+fold(State,Fun,Handlers,Ctx) ->
+    lists:foldl(fun({_,Module},Ctx1) ->
+        {ok,_,NewCtx} = Module:Fun(State,Ctx1),
+        NewCtx end,Ctx,Handlers).
 
 set_sid(true) -> Name = n2o_session:session_cookie_name(site),
                  Value= wf:session_id(),
@@ -145,6 +150,7 @@ before(App,Mod,Ctx) -> O = [], %%FIXME: filter config
                                    end, {ok,Ctx},Filters).
 
 %%todo: middle, after filter?
+%%todo: 
 %%todo: not_found
 %%todo: {stream, Generator::function(), Acc0}
 %%todo: dev mode, header([{<<"Cache-Control">>, <<"no-cache">>}])
@@ -195,7 +201,7 @@ render({{redirect,L,H},Ctx})     -> header(H++[{<<"Location">>,naga:location(L,C
 render({{moved,L},Ctx})          -> render({{moved,L,[]},Ctx});
 render({{moved,L,H},Ctx})        -> header(H++[{<<"Location">>,naga:location(L,Ctx)}]),
                                     wf:state(status,301),[];                                    
-%% jsond, render with DTL
+%% jsond, json render with DTL
 render({{jsond,V},Ctx})          -> render({{jsond,V,[]},Ctx});
 render({{jsond,V,H},Ctx})        -> render({{jsond,V,H,200},Ctx});
 render({{jsond,V,H,S},Ctx})      -> header(H++?CTYPE_JSON),
