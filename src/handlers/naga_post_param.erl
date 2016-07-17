@@ -36,6 +36,11 @@ multipart(#cx{req=Req}=Ctx, App, Dir, MaxFileSizeLimit) when is_integer(MaxFileS
 				                File = {FieldName, {file, Filename, TempFilename, FileSize, CType}},
 				                #cx{form=Form}=Ctx,
 				                Ctx#cx{req=Req4,form=Form++[File]};
+				            {error, Reason, Req4} ->
+				                Form = Ctx#cx.form,
+				                F = {FieldName,{error, [{reason, Reason},{filename,Filename}]}},
+				                ok = file:delete(TempFilename),
+				                Ctx#cx{form=Form++[F], req=Req4};				                
 				            {limit, Reason, Req4} ->
 				                Form = Ctx#cx.form,
 				                F = {FieldName,{error, [{reason, Reason},{filename,Filename}]}},
@@ -54,11 +59,13 @@ stream_file(Req, IoDevice, FileSize, MaxFileSizeLimit) ->
     case NewFileSize > MaxFileSizeLimit of
         true -> {limit, file_size, Req2};
         false ->
-            ok = file:write(IoDevice, Data),
-            case Control of
-                ok -> {ok, NewFileSize, Req2};
-                more -> stream_file(Req2, IoDevice, NewFileSize, MaxFileSizeLimit)
-            end
+            case file:write(IoDevice, Data) of 
+            	ok -> case Control of
+	                   ok -> {ok, NewFileSize, Req2};
+	                   more -> stream_file(Req2, IoDevice, NewFileSize, MaxFileSizeLimit)
+	                  end; 
+            	{error, Raison} -> {error, Raison, Req2} 
+        	end
     end.
 
 temp_filename(Dir) ->
