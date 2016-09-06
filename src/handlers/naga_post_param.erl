@@ -13,9 +13,11 @@ init(State, Ctx) ->
 	 {ok, {<<"multipart">>, <<"form-data">>, _}, Req} ->
 	 	    NewCtx = multipart(Ctx#cx{req=Req,form=[]}, App, Dir, Limit),
 	 	    {ok, State, NewCtx};
-     {ok, _, Req} -> 
+     {ok, {<<"application">>, <<"x-www-form-urlencoded">>, _}, Req} -> 
             {Form,Req1} = wf:form(Req),
-			{ok, State, Ctx#cx{form=Form,req=Req1}} 
+			{ok, State, Ctx#cx{form=Form,req=Req1}};
+     {ok, _, Req} -> 
+			{ok, State, Ctx#cx{req=Req}}
     end.
 
 multipart(#cx{req=Req}=Ctx, App, Dir, MaxFileSizeLimit) when is_integer(MaxFileSizeLimit) ->
