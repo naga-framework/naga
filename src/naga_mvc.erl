@@ -7,6 +7,7 @@
 -include("naga.hrl").
 -export([run/2,transition/1]).
 -export([i18n_undefined/1]).
+-define(CATCH(X), case catch X of {'EXIT', Err} -> io:format("Error ~p~n",[Err]), Err; _ -> X end).
 
 transition(Actions) -> receive {'INIT',A} -> transition(A); {'N2O',Pid} -> Pid ! {actions,Actions} end.
 run(Req, []) ->
@@ -138,15 +139,13 @@ req_ctx(App,Mod,A,M,P,B)  -> #{'_application'=> App,
                                '_base_url'   => case wf:config(App,base_url,"") of "/" -> ""; E -> E end
                               }.
 
-before(App,Mod,Ctx) -> O = [], %%FIXME: filter config
+before(App,Ctr,Ctx) -> O = [], %%FIXME: filter config
                        G = wf:config(App,filter,[]),                      
-                       Filters = case erlang:function_exported(Mod,before_filters,2) of 
-                                      true -> Mod:before_filters(G,Ctx); _ -> G end,
-                       lists:foldl(fun(M, {ok,A}) -> 
-                                        case  erlang:function_exported(M,before_filter,2) of
-                                              true -> M:before_filter(O,A); _-> {ok, A} end;
-                                      (M, {redirect,_}=R) -> R;
-                                      (M, {error,_}=E) -> E
+                       Filters = case erlang:function_exported(Ctr,before_filters,2) of 
+                                      true -> Ctr:before_filters(G,Ctx); _ -> G end,
+                       lists:foldl(fun(F, {ok,Acc})       -> F:before_filter(O,Acc); 
+                                      (F, {redirect,_}=R) -> R;
+                                      (F, {error,_}=E)    -> E
                                    end, {ok,Ctx},Filters).
 
 %%todo: middle, after filter?
