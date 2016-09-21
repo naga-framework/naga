@@ -79,7 +79,7 @@ run(Req, #route{type=mvc,is_steroid=false}=Route) ->
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2);
 
 run(Req, #route{type=view,view=Module}) ->
-    wf:state(status,200),   
+    wf:state(status,200),  
     {ok,Html} = Module:render(),    
     Req2 = wf:response(Html,Req),
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2).
@@ -142,7 +142,7 @@ before(App,Mod,Ctx) -> O = [], %%FIXME: filter config
                        G = wf:config(App,filter,[]),                      
                        Filters = case erlang:function_exported(Mod,before_filters,2) of 
                                       true -> Mod:before_filters(G,Ctx); _ -> G end,
-                       lists:foldr(fun(M, {ok,A}) -> 
+                       lists:foldl(fun(M, {ok,A}) -> 
                                         case  erlang:function_exported(M,before_filter,2) of
                                               true -> M:before_filter(O,A); _-> {ok, A} end;
                                       (M, {redirect,_}=R) -> R;
@@ -172,7 +172,7 @@ trans(Vars,Ctx)    -> #{'_application':=A} = Ctx,
                                                         E -> E end
                                                    end}] end.
 
-%% theme is an naga app with only views and static assets 
+%% theming can be done with an naga app with only views and static assets 
 %% FIXME: maybe base_url, static asset 
 %%        switch default static asset with the one from the theme
 tpl({_,C,Ac,E},#{'_theme':=T})   -> tpl(T,C,Ac,E);                       
@@ -180,14 +180,17 @@ tpl({A,C,Ac,E},_)                -> tpl(A,C,Ac,E).
 tpl(A,C,Ac,E)                    -> wf:to_atom(wf:to_list(A)++
                                     "_view_"++wf:to_list(C)++
                                     "_"++wf:to_list(Ac)++
-                                    "_"++wf:to_list(E)). 
+                                    "_"++wf:to_list(E)).
+
+nocache(App)                     -> case wf:config(App,mode,prod) of prod -> skip;
+                                     dev -> header([{<<"Cache-Control">>, <<"no-cache">>}]) end.
 
 header([])                       -> ok;
 header([{K,V}|T])                -> wf:header(K,V),header(T).
 
 render({{output,Io},Ctx})        -> render({{output,Io,?CTYPE_PLAIN},Ctx});
-render({{output,Io,H},Ctx})      -> header(H),Io;
-render({{S,Io,H},Ctx}) 
+render({{output,Io,H},_})        -> header(H),Io;
+render({{S,Io,H},_}) 
               when is_integer(S) -> wf:state(status,S),header(H),Io;
 render({ok,Ctx})                 -> render({{ok,[]},Ctx}); 
 render({{ok,V},Ctx})             -> render({{ok,V,[]},Ctx});
@@ -215,14 +218,14 @@ render({{json,V,H,S},_})         -> header(H++?CTYPE_JSON),
                                     wf:state(status,S),
                                     wf:json(V);
 render({{jsonp,C,V},Ctx})        -> render({{jsonp,C,V,[]},Ctx});
-render({{jsonp,C,V,H},Ctx})      -> header(H++?CTYPE_JSON),
+render({{jsonp,C,V,H},_})        -> header(H++?CTYPE_JSON),
                                     [wf:to_binary(C),<<"(">>,wf:json(V),<<");">>];
 render({{action_other,L},Ctx})   
                   when is_map(L) -> P = maps:get(params,L,[]),
                                     {App1,C1,A1} = case [L,Ctx] of
-                                                    [#{app:=App,controller:=C,action:=A},_] -> {App,C,A};
-                                                    [#{         controller:=C,action:=A},#{'_application':=App}] -> {App,C,A};
-                                                    [#{                       action:=A},#{'_application':=App, '_controller':=C}] -> {App,C,A}
+                                                    [#{app:=App,controller:=Ctr,action:=A},_] -> {App,Ctr,A};
+                                                    [#{         controller:=Ctr,action:=A},#{'_application':=App}] -> {App,Ctr,A};
+                                                    [#{                         action:=A},#{'_application':=App, '_controller':=Ctr}] -> {App,Ctr,A}
                                                    end,
                                     #{'_method':=M,'_bindings':=B} = Ctx,
                                     try handle(App1,C1,A1,M,P,B) catch C:E -> wf:error_page(C,E) end;
