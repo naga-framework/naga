@@ -20,8 +20,8 @@
                                     <<".xml">>]).
 
 -define(DEFAULT_SSL_OPTS,         [{cacertfile, "./priv/ssl/cowboy-ca.crt"},
-		                           {certfile, "./priv/ssl/server.crt"},
-		                           {keyfile, "./priv/ssl/server.key"}]).   
+                                   {certfile, "./priv/ssl/server.crt"},
+                                   {keyfile, "./priv/ssl/server.key"}]).   
 
 -define(CTYPE_JS,                 [{<<"Content-Type">>,<<"application/javascript">>}]).
 -define(CTYPE_HTML,               [{<<"Content-Type">>,<<"text/html">>}]).

@@ -6,7 +6,7 @@
 
 init(_, _, _) -> {upgrade, protocol, cowboy_rest}.
 
-%% TODO: gz static content
+
 rest_init(Req, {dir, Path, Extra}) when is_binary(Path) -> rest_init(Req, {dir, binary_to_list(Path), Extra});
 rest_init(Req, {dir, Path, Extra}) ->
 	{PathInfo, Req2} = cowboy_req:path_info(Req),
@@ -18,32 +18,30 @@ rest_init(Req, {dir, Path, Extra}) ->
 	FileName = filename:absname(StringPath),
 	{AE, _} = cowboy_req:header(<<"accept-encoding">>,Req),
 	case accept_gzip(AE) of 
-		true ->
-			case ets:member(filesystem, FileName++".gz") of
-				true  -> {ok, Req2, {wf:to_binary(FileName), {ok, #file_info{type={gz,ets_regular},size=0}}, Extra}};
-				false -> case ets:member(filesystem, FileName) of
-							true -> {ok, Req2, {wf:to_binary(FileName), {ok, #file_info{type=ets_regular,size=0}}, Extra}};
-                            false-> Path2 = filename:join([code:lib_dir(Name)|RestPath]),
-							         %wf:info(?MODULE,"Rest Init: ~p~n\r",[Path2]),
-							        case filelib:is_file(Path2++".gz") of
-							  			true -> {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type={gz,regular},size=0}}, Extra}};
-							  			false-> case filelib:is_file(Path2) of
-							  			        	true -> {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type=regular,size=0}}, Extra}};
-							  			        	false-> {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type=not_found}}, Extra}}
-							  			        end 
-								    end
-					     end
-			end;
-		false ->
-			case ets:member(filesystem, FileName) of
-				true  -> {ok, Req2, {FileName, {ok, #file_info{type=ets_regular,size=0}}, Extra}};
-				false -> Path2 = filename:join([code:lib_dir(Name)|RestPath]),
-				         %wf:info(?MODULE,"Rest Init: ~p~n\r",[Path2]),
-				         case filelib:is_file(Path2) of
-						  true ->  {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type=regular,size=0}}, Extra}};
-						  false -> {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type=not_found}}, Extra}}
+		true -> case ets:member(filesystem, FileName++".gz") of
+							true  -> {ok, Req2, {wf:to_binary(FileName), {ok, #file_info{type={gz,ets_regular},size=0}}, Extra}};
+							false -> case ets:member(filesystem, FileName) of
+												true -> {ok, Req2, {wf:to_binary(FileName), {ok, #file_info{type=ets_regular,size=0}}, Extra}};
+												false-> Path2 = filename:join([code:lib_dir(Name)|RestPath]),
+												         %wf:info(?MODULE,"Rest Init: ~p~n\r",[Path2]),
+												        case filelib:is_file(Path2++".gz") of
+																	true -> {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type={gz,regular},size=0}}, Extra}};
+																	false-> case filelib:is_file(Path2) of
+																						true -> {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type=regular,size=0}}, Extra}};
+																						false-> {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type=not_found}}, Extra}}
+																					end 
+													       end
+											 end
+						end;
+		false -> case ets:member(filesystem, FileName) of
+							true  -> {ok, Req2, {FileName, {ok, #file_info{type=ets_regular,size=0}}, Extra}};
+							false -> Path2 = filename:join([code:lib_dir(Name)|RestPath]),
+			                 %wf:info(?MODULE,"Rest Init: ~p~n\r",[Path2]),
+			                 case filelib:is_file(Path2) of
+			                   true ->  {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type=regular,size=0}}, Extra}};
+			                   false -> {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type=not_found}}, Extra}}
+			                 end
 						 end
-			end
 	end.		
 
 malformed_request(Req, State) -> {State =:= error, Req, State}.
