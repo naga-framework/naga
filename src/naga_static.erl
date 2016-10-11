@@ -16,15 +16,35 @@ rest_init(Req, {dir, Path, Extra}) ->
     StringPath = wf:to_list(unicode:characters_to_binary(Path1,utf8,utf8)),
     [_Type,Name|RestPath]=SplitPath = filename:split(StringPath),
 	FileName = filename:absname(StringPath),
-	case ets:member(filesystem, FileName) of
-		true  -> {ok, Req2, {FileName, {ok, #file_info{type=ets_regular,size=0}}, Extra}};
-		false -> Path2 = filename:join([code:lib_dir(Name)|RestPath]),
-		         %wf:info(?MODULE,"Rest Init: ~p~n\r",[Path2]),
-		         case filelib:is_file(Path2) of
-				  true ->  {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type=regular,size=0}}, Extra}};
-				  false -> {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type=not_found}}, Extra}}
-				 end
-	end.
+	{AE, _} = cowboy_req:header(<<"accept-encoding">>,Req),
+	case accept_gzip(AE) of 
+		true ->
+			case ets:member(filesystem, FileName++".gz") of
+				true  -> {ok, Req2, {wf:to_binary(FileName), {ok, #file_info{type={gz,ets_regular},size=0}}, Extra}};
+				false -> case ets:member(filesystem, FileName) of
+							true -> {ok, Req2, {wf:to_binary(FileName), {ok, #file_info{type=ets_regular,size=0}}, Extra}};
+                            false-> Path2 = filename:join([code:lib_dir(Name)|RestPath]),
+							         %wf:info(?MODULE,"Rest Init: ~p~n\r",[Path2]),
+							        case filelib:is_file(Path2++".gz") of
+							  			true -> {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type={gz,regular},size=0}}, Extra}};
+							  			false-> case filelib:is_file(Path2) of
+							  			        	true -> {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type=regular,size=0}}, Extra}};
+							  			        	false-> {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type=not_found}}, Extra}}
+							  			        end 
+								    end
+					     end
+			end;
+		false ->
+			case ets:member(filesystem, FileName) of
+				true  -> {ok, Req2, {FileName, {ok, #file_info{type=ets_regular,size=0}}, Extra}};
+				false -> Path2 = filename:join([code:lib_dir(Name)|RestPath]),
+				         %wf:info(?MODULE,"Rest Init: ~p~n\r",[Path2]),
+				         case filelib:is_file(Path2) of
+						  true ->  {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type=regular,size=0}}, Extra}};
+						  false -> {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type=not_found}}, Extra}}
+						 end
+			end
+	end.		
 
 malformed_request(Req, State) -> {State =:= error, Req, State}.
 
@@ -42,6 +62,9 @@ content_types_provided(Req, State={Path, _, Extra}) ->
 		{mimetypes, Type} -> {[{Type, get_file}], Req, State}
 	end.
 
+resource_exists(Req, State={Path, {ok, #file_info{type={gz,T} }}, _}) -> 
+	Req1 = cowboy_req:set_resp_header(<<"Content-Encoding">>,<<"gzip">>, Req),
+	{true, Req1, State};
 resource_exists(Req, State={Path, {ok, #file_info{type=ets_regular}}, _}) -> {true, Req, State};
 resource_exists(Req, State={Path, {ok, #file_info{type=regular}}, _}) -> {true, Req, State};
 resource_exists(Req, State) -> {false, Req, State}.
@@ -58,6 +81,27 @@ generate_default_etag(Size, Mtime) ->
 		erlang:phash2({Size, Mtime}, 16#ffffffff)))}.
 
 last_modified(Req, State={_, {ok, #file_info{mtime=Modified}}, _}) -> {Modified, Req, State}.
+
+
+get_file(Req, State={Path, {ok, #file_info{type={gz,regular} }}, _}) ->
+	{ok, Raw} = file:read_file(<<Path/binary,".gz">>),
+	Sendfile = fun (Socket, Transport) ->
+	case Transport:send(Socket, Raw) of
+		{ok, _} -> ok;
+		{error, closed} -> ok;
+		{error, etimedout} -> ok;
+		_ -> ok end end,
+	{{stream, size(Raw), Sendfile}, Req, State};
+
+get_file(Req, State={Path, {ok, #file_info{type={gz,ets_regular} }}, _}) ->
+	{ok, Raw} = mad_repl:load_file(<<Path/binary,".gz">>),
+	Sendfile = fun (Socket, Transport) ->
+	case Transport:send(Socket, Raw) of
+		{ok, _} -> ok;
+		{error, closed} -> ok;
+		{error, etimedout} -> ok;
+		_ -> ok end end,
+	{{stream, size(Raw), Sendfile}, Req, State};
 
 get_file(Req, State={Path, {ok, #file_info{type=regular}}, _}) ->
 	{ok, Raw} = file:read_file(Path),
@@ -78,3 +122,7 @@ get_file(Req, State={Path, {ok, #file_info{type=ets_regular}}, _}) ->
 		{error, etimedout} -> ok;
 		_ -> ok end end,
 	{{stream, size(Raw), Sendfile}, Req, State}.
+
+accept_gzip(<<"gzip,",_/binary>>) -> true;
+accept_gzip(_) -> false.
+
