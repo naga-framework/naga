@@ -7,7 +7,6 @@
 -include("naga.hrl").
 -export([run/2,transition/1]).
 -export([i18n_undefined/1]).
--define(CATCH(X), case catch X of {'EXIT', Err} -> io:format("Error ~p~n",[Err]), Err; _ -> X end).
 
 transition(Actions) -> receive {'INIT',A} -> transition(A); {'N2O',Pid} -> Pid ! {actions,Actions} end.
 run(Req, []) ->

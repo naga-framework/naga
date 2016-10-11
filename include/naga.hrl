@@ -1,9 +1,11 @@
 -ifndef(NAGA_HRL).
 -define(NAGA_HRL, true).
 
--define(SPECIAL_FILES,              ["/favicon.ico",
-	                                 "/apple-touch-icon.png",
-	                                 "/robots.txt"]).
+-define(CATCH(X), case catch X of {'EXIT', Err} -> io:format("Error ~p~n",[Err]), Err; _ -> X end).
+
+-define(SPECIAL_FILES,             ["/favicon.ico",
+                                    "/apple-touch-icon.png",
+                                    "/robots.txt"]).
 -define(DEFAULT_HTTP_PORT,          8001).
 -define(DEFAULT_HTTPS_PORT,         8443).
 -define(DEFAULT_SPDY_PORT,          8443).
@@ -31,16 +33,16 @@
 -define(CTYPE_PLAIN,              [{<<"Content-Type">>,<<"text/plain">>}]).
 
 -record(route,{type        =[], 
-	           application =[],
-	           controller  =[],  %% controller == module
-	           view        =[],  %% view       == module 
-	           action      =index,
-	           arity       =3,	           
-	           want_session=true,
-	           is_steroid  =false,
-	           params      =undefined,
-	           bindding    =undefined,
-	           opts        =undefined
-	          }).                           
+               application =[],
+               controller  =[],  %% controller == module
+               view        =[],  %% view       == module 
+               action      =index,
+               arity       =3,	           
+               want_session=true,
+               is_steroid  =false,
+               params      =undefined,
+               bindding    =undefined,
+               opts        =undefined
+              }).                           
 
 -endif.
