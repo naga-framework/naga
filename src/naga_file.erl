@@ -46,23 +46,25 @@ info(#ftp{sid=Sid,meta={FieldName,Idx},filename=FileName,status= <<"init">>,bloc
     ok=filelib:ensure_dir(FilePath),
     FileSize=case file:read_file_info(FilePath) of {ok,Fi} -> Fi#file_info.size; {error,_} -> 0 end,
 
-    wf:info(?MODULE,"Info Init: Meta ~p, ~p Offset: ~p Block: ~p~n",[{FieldName,Idx},FilePath,FileSize,Block]),
+    %wf:info(?MODULE,"Info Init: Meta ~p, ~p Offset: ~p Block: ~p~n",[{FieldName,Idx},FilePath,FileSize,Block]),
 
     Name={Sid,filename:basename(FileName)},
     Block2=case Block of 0 -> ?STOP; _ -> ?NEXT end,
     Offset2=case FileSize >= Offset of true -> FileSize; false -> 0 end,
-    FTP2=FTP#ftp{meta=Idx,block=Block2,offset=Offset2,filename=RelPath,data= <<>>},
+    Meta = wf:f("~s_~B",[FieldName,Idx]),
+    FTP2=FTP#ftp{meta=Meta,block=Block2,offset=Offset2,filename=RelPath,data= <<>>},
 
     n2o_async:stop(file,Name),
     n2o_async:start(#handler{module=?MODULE,class=file,group=n2o,state=FTP2,name=Name}),
     wf:send(Sid,{client,{ftpInit, FilePath, FieldName, Idx, FileName, FileSize, TotalSize}}),
     {reply,wf:format(FTP2),Req,State};
 
-info(#ftp{sid=Sid,meta={_,Idx},filename=FileName,status= <<"send">>}=FTP,Req,State) ->
+info(#ftp{sid=Sid,meta={FieldName,Idx},filename=FileName,status= <<"send">>}=FTP,Req,State) ->
     wf:info(?MODULE,"Info Send: ~p",[FTP#ftp{data= <<>>}]),
     Reply=try gen_server:call(n2o_async:pid({file,{Sid,filename:basename(FileName)}}),FTP)
         catch E:R -> wf:error(?MODULE,"Info Error call the sync: ~p~n",[FTP#ftp{data= <<>>}]),
-            FTP#ftp{meta=Idx,data= <<>>,block=?STOP} end,
+            Meta = wf:f("~s_~B",[FieldName,Idx]),
+            FTP#ftp{meta=Meta,data= <<>>,block=?STOP} end,
     wf:info(?MODULE,"reply ~p",[Reply#ftp{data= <<>>}]),
     {reply,wf:format(Reply),Req,State};
 
@@ -72,7 +74,8 @@ info(#ftp{sid=Sid, meta={FieldName, Idx}, filename=Filename, status= <<"cancel">
     File  = filename:join([Dir,Filename]),
     FSize = case file:read_file_info(File) of {ok, Fi} -> file:delete(File), 0; {error, _} -> 0 end,
     wf:info(?MODULE, "File Transfer cancel: ~p: Offset:~p~n",[File, FSize]),
-    F2    = FTP#ftp{block = 0, offset = FSize, data = <<>>, meta=Idx },
+    Meta = wf:f("~s_~B",[FieldName,Idx]),
+    F2    = FTP#ftp{block = 0, offset = FSize, data = <<>>, meta=Meta },
     Name  = {Sid,Filename},
     
     Module= State#cx.module,
@@ -104,16 +107,19 @@ proc(#ftp{sid=Sid,meta={FieldName,Idx},data=Data,filename=FileName,status= <<"se
         {error,Reason} -> {reply,{error,Reason},Async};
         ok ->
             %FTP2=FTP#ftp{data= <<>>,block=?STOP},
-            FTP2=FTP#ftp{meta=Idx,data= <<>>, status= <<"EOF">>, offset=Offset+Block },
+            Meta = wf:f("~s_~B",[FieldName,Idx]),
+            FTP2=FTP#ftp{meta=Meta,data= <<>>, status= <<"EOF">>, offset=Offset+Block },
             Path  = filename:join([?ROOT,RelPath]),            
             wf:send(Sid,{client,{ftpEOF, FieldName, Idx, Path, TotalSize, Offset}}),
             spawn(fun() -> n2o_async:stop(file,{Sid,filename:basename(FileName)}) end),
             {stop,normal,FTP2,Async#handler{state=FTP2}} end;
 
-proc(#ftp{sid=Sid,meta={_,Idx},data=Data,block=Block}=FTP,
+proc(#ftp{sid=Sid,meta={FieldName,Idx},data=Data,block=Block}=FTP,
      #handler{state=#ftp{data=State,offset=Offset,filename=RelPath}}=Async) ->
-    FTP2=FTP#ftp{meta=Idx,status= <<"send">>,offset=Offset+Block },
+    Meta = wf:f("~s_~B",[FieldName,Idx]),
+    FTP2=FTP#ftp{meta=Meta,status= <<"send">>,offset=Offset+Block },
     wf:info(?MODULE,"Proc Process ~p",[FTP2#ftp{data= <<>>}]),
+    Meta = wf:f("~s_~B",[FieldName,Idx]),
     case file:write_file(filename:join(?ROOT,RelPath),<<Data/binary>>,[append,raw]) of
         {error,Reason} -> {reply,{error,Reason},Async};
         ok -> {reply,FTP2#ftp{data= <<>>},Async#handler{state=FTP2#ftp{filename=RelPath}}} end.
