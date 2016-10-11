@@ -102,9 +102,10 @@ edge(App, {File,Module}) ->
    case  Module:dependencies() of [] -> []; Deps ->[{File, X}||{X,_} <- Deps] end.
   
 view_files(App) ->
-  {ok, Modules} = application:get_key(App,modules),
-  [code:ensure_loaded(M)||M<-Modules],
-  [{source(M),M}||M <- Modules, is_view(M)].
+  case application:get_key(App,modules) of
+    undefined -> wf:error(?MODULE, "App (~p) is not started.",[App]),[];
+    {ok , Modules} -> [code:ensure_loaded(M)||M<-Modules],
+                      [{source(M),M}||M <- Modules, is_view(M)] end.
 
 controller_files(App) ->
   {ok, Modules} = application:get_key(App,modules),
