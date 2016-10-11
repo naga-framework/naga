@@ -50,7 +50,7 @@ run(Req, #route{type=mvc,is_steroid=true}=Route) ->
                             post_params(Route,M),
                             try handle(App,Module,Act,M,P,B) catch C:E -> wf:error_page(C,E) end
                end,
-    Html    = render(Elements),    
+    Html    = render(Elements),   
     Actions = wf:actions(),
     Pid ! {'INIT',Actions},
     Ctx2 = finish(Ctx,?CTX, false, WantSession),
@@ -226,7 +226,7 @@ render({{action_other,L},Ctx})
                                                     [#{                         action:=A},#{'_application':=App, '_controller':=Ctr}] -> {App,Ctr,A}
                                                    end,
                                     #{'_method':=M,'_bindings':=B} = Ctx,
-                                    try handle(App1,C1,A1,M,P,B) catch C:E -> wf:error_page(C,E) end;
+                                    render({C1:A1(M,P,Ctx),Ctx});
 
 render({{render_other,L},Ctx})   -> render({{render_other,L,[]},Ctx});
 render({{render_other,L,V},Ctx}) 

@@ -1,8 +1,6 @@
 -ifndef(NAGA_HRL).
 -define(NAGA_HRL, true).
 
--define(CATCH(X), case catch X of {'EXIT', Err} -> io:format("Error ~p~n",[Err]), Err; _ -> X end).
-
 -define(SPECIAL_FILES,             ["/favicon.ico",
                                     "/apple-touch-icon.png",
                                     "/robots.txt"]).
