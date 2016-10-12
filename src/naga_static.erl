@@ -12,9 +12,9 @@ rest_init(Req, {dir, Path, Extra}) ->
 	{PathInfo, Req2} = cowboy_req:path_info(Req),
 	Info = {ok, #file_info{type=regular,size=0}},
 	Path1 = filename:join([Path|PathInfo]),
-	wf:info(?MODULE,"Rest Init: ~p~n\r",[Path1]),
-    StringPath = wf:to_list(unicode:characters_to_binary(Path1,utf8,utf8)),
-    [_Type,Name|RestPath]=SplitPath = filename:split(StringPath),
+	%wf:info(?MODULE,"Rest Init: ~p~n\r",[Path1]),
+  StringPath = wf:to_list(unicode:characters_to_binary(Path1,utf8,utf8)),
+  [_Type,Name|RestPath]=SplitPath = filename:split(StringPath),
 	FileName = filename:absname(StringPath),
 	{AE, _} = cowboy_req:header(<<"accept-encoding">>,Req),
 	case accept_gzip(AE) of 
@@ -53,7 +53,7 @@ forbidden(Req, State={_, {ok, #file_info{access=Access}}, _}) when Access =:= wr
 forbidden(Req, State) -> {false, Req, State}.
 
 content_types_provided(Req, State={Path, _, Extra}) ->
-    wf:info(?MODULE,"Content Type Provided: ~p~n\r",[Path]),
+  %wf:info(?MODULE,"Content Type Provided: ~p~n\r",[Path]),
 	case lists:keyfind(mimetypes, 1, Extra) of
 		false -> {[{cow_mimetypes:web(Path), get_file}], Req, State};
 		{mimetypes, Module, Function} -> {[{Module:Function(Path), get_file}], Req, State};
