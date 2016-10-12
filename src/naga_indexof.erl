@@ -2,10 +2,11 @@
 -export([index/3,event/1]).
 -export([init/3,terminate/3,handle/2]).
 -export([view/3,static/3]).
--compile(export_all).
+%-compile(export_all).
 -default_action(index).
 -actions([index]).
 
+-include_lib("kernel/include/file.hrl").
 -include_lib("nitro/include/nitro.hrl").
 -include_lib("n2o/include/wf.hrl").
 -include("naga.hrl").
@@ -17,7 +18,8 @@
 
 init(_Transport, Req, Opts)      -> {ok, Req, Opts}.
 terminate(_Reason, _Req, Opts)   -> ok.
-handle(Req, Opts)                -> Route = #route{type=mvc,
+handle(Req, {A,_,_}=Opts)        -> Route = #route{type=mvc,
+                                                   application=A,
                                                    controller=?MODULE,
                                                    action=index,
                                                    want_session=true,
@@ -25,12 +27,13 @@ handle(Req, Opts)                -> Route = #route{type=mvc,
                                                    opts=Opts},
                                     {ok, NewReq} = naga_mvc:run(Req, Route),
                                     {ok, NewReq, Opts}.
+
 %% ----------------
 %% INDEX CONTROLLER
 %% ----------------
 index(<<"GET">>, _, #{'_opts' := {App,Type,Base}, 
-                       script := [_, PicklePid, _, _, _ ,_]} = Ctx) ->    
-  
+                       script := [_, PicklePid, _, _, _ ,_]} = Ctx) -> 
+
   {PathInfo,_} = cowboy_req:path_info(?REQ),
   {ok, Vsn} = application:get_key(naga,vsn), 
   Bindings = [
@@ -40,7 +43,7 @@ index(<<"GET">>, _, #{'_opts' := {App,Type,Base},
               {rows, ?MODULE:Type(App,PathInfo,Base)}
              ],
 
-  #dtl{file = "naga_indexof",
+  #dtl{file = naga_indexof,
        bind_script=false, 
        app=naga, bindings=Bindings}.
 
@@ -49,41 +52,63 @@ index(<<"GET">>, _, #{'_opts' := {App,Type,Base},
 %% ----------------
 event(Ev) -> wf:info(?MODULE,"received event ~p~n",[Ev]).
 
-
+% {App|Theme,Ctrl,Act,".html"}
 %% ----------------
 %% INTERNAL FUNCTION
 %% ----------------
+split(F) -> filename:split(F).
+join(F)  -> filename:join(F).
+
 new_script(App,PicklePid) ->
   Port = wf:to_list(wf:config(App,websocket_port,wf:config(App,port,8000))),
   NewScript = ["var transition = {pid: '", PicklePid, "', ", "port:'", Port ,"'}"].
 
-view(App,PathInfo1,Base) ->
-    io:format("PathInfo : ~p~n",[PathInfo1]),
-    PathInfo = lists:reverse([binary_to_list(X)||X<-PathInfo1]),
-    Files = naga:files(view, App),
-    Dir = filename:split(naga:view_dir(App)),
-    BaseUrl = naga:base_url(App),
-    B = Base ++ BaseUrl,
-    [X||X<-rows(B, Dir, PathInfo, Files), X /= []].
+view(App1,PathInfo,Base) ->
+  App = wf:config(App1,theme,App1),
+  BaseUrl = naga:base_url(App),
+  ViewDir = naga:view_dir(App),
+  Files   = naga:files(view, App),
+  lists:foldr(fun({X,_},Acc) ->
+                Name=join(split(X) -- split(ViewDir)),
+
+                {ok, I} = file:read_file_info(X, [{time, universal}]),
+                [#tr{cells=[
+                   #td{class=[n],body=[
+                       #link{href=Name, body=[ Name ]}
+                   ]},
+                   #td{class=[m],body=[ naga:dateformat(I#file_info.mtime,"M d Y H:i:s") ]},
+                   #td{class=[s],body=[ wf:to_list(I#file_info.size),"&nbsp;" ]},
+                   #td{class=[s],body=[ "view&nbsp;" ]}
+                 ]}] ++ Acc
+              end,[],Files).
 
 static(App,PathInfo,Base) ->
   {Prefix, StaticDir} = naga:static_dir(App),
   PathInfo1 = [binary_to_list(X)||X<-PathInfo],
-  Dir = filename:join(StaticDir,PathInfo1),
+  Dir = case PathInfo1 of 
+         [] -> StaticDir;
+         PathInfo1 -> filename:join(StaticDir,filename:join(PathInfo1)) 
+        end,
   case filelib:is_dir(Dir) of
     true -> {ok, Files} = file:list_dir(Dir),
             [begin 
                 XX = filename:join(PathInfo1 ++ [X]),
                 Name = re:replace(Prefix,"\\\[...\\\]",XX,[{return,list}]),
+                Path = filename:join(Dir,X),
+                %io:format("PATH ~p~n",[Path]),
+                {ok, I} = file:read_file_info(Path, [{time, universal}]),
+                {Type,Href} = case filelib:is_dir(Path) of 
+                                true -> {"DIR&nbsp;", Base ++"/"++ XX}; 
+                                _ -> {"-&nbsp;", Name} end,
                 #tr{cells=[
                    #td{class=[n],body=[
-                       #link{href=Base ++"/"++ XX, body=[ Name ]}
+                       #link{href=Href, body=[ Name ]}
                    ]},
-                   #td{class=[m],body=[ "undefined" ]},
-                   #td{class=[s],body=[ "undefined&nbsp;" ]},
-                   #td{class=[s],body=[ "&nbsp;" ]}
+                   #td{class=[m],body=[ naga:dateformat(I#file_info.mtime,"M d Y H:i:s") ]},
+                   #td{class=[s],body=[ wf:to_list(I#file_info.size),"&nbsp;" ]},
+                   #td{class=[s],body=[ Type ]}
                 ]} end || X<-Files];
-    false -> [] %% 
+    false -> []
   end.
 
 
@@ -105,31 +130,3 @@ static(App,PathInfo,Base) ->
 %                             end, [], Actions) ++ Acc
 %              end,[],Controllers).
 %%
-
-
-rows(BaseUrl, Dir, PathInfo, Files) ->
-    rows(BaseUrl, Dir, PathInfo, Files, []).
-rows(BaseUrl, Dir, _, [], Acc) -> lists:reverse(Acc);
-rows(BaseUrl, Dir, PathInfo, [{F,_}|T], Acc) ->
-    Path = F -- Dir,
-    View = row(BaseUrl, tl(filename:split(Path)), PathInfo),
-    rows(BaseUrl, Dir, PathInfo, T, [View] ++ Acc).
-
-row(Base, [Controller|_] = View, _) ->
-    Href = Base ++ filename:join(View),
-    Ext = extension(View),
-    #tr{cells=[
-       #td{class=[n],body=[
-           #link{href=Href, body=[ filename:join(View) ]}
-       ]},
-
-       #td{class=[m],body=[ "undefined" ]},
-       #td{class=[s],body=[ "undefined&nbsp;" ]},
-       #td{class=[s],body=[ wf:to_list(Ext), "&nbsp;" ]}
-    ]};
-
-row(_,_,_) -> [].
-
-extension(View) ->
-    [Ex] = string:tokens(filename:extension(lists:last(View)), "."),
-    list_to_atom(Ex).

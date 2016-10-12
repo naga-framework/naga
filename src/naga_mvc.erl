@@ -78,11 +78,22 @@ run(Req, #route{type=mvc,is_steroid=false}=Route) ->
     Req2 = wf:response(Html,set_cookies(wf:cookies(),Ctx2#cx.req)),
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2);
 
-run(Req, #route{type=view,view=Module}) ->
-    wf:state(status,200),  
-    {ok,Html} = Module:render(),    
+run(Req, #route{type=view,application=App,view=Module}=R) ->
+    wf:state(status,200),
+    Ctx0 = wf:init_context(Req),
+    Ctx  = Ctx0#cx{module=?MODULE},
+    Ctx1 = init(Ctx, false, false),
+    wf:context(Ctx1),
+    {ok, Cx} = before(App,?MODULE,req_ctx(App,?MODULE,index,[],[],[],[])), 
+    Html = case maps:get('_theme',Cx,undefined) of
+            undefined -> {ok,H} = Module:render(),H;
+            Theme -> Tokens = string:tokens(wf:to_list(Module),"_"), 
+                     View = wf:atom([wf:to_list(Theme)]++tl(Tokens)),
+                     {ok,H} = View:render(),H end,    
     Req2 = wf:response(Html,Req),
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2).
+
+index(_,_,_) -> {ok,[]}.
 
 no_session(L)-> lists:keydelete(session,1,L).
 no_route(L)  -> lists:keydelete(route,1,L).
@@ -141,8 +152,10 @@ req_ctx(App,Mod,A,M,P,B,O)  -> #{'_application'=> App,
 
 before(App,Ctr,Ctx) -> O = [], %%FIXME: filter config
                        G = wf:config(App,filter,[]),                      
-                       Filters = case erlang:function_exported(Ctr,before_filters,2) of 
+                       Filters0 = case erlang:function_exported(Ctr,before_filters,2) of 
                                       true -> Ctr:before_filters(G,Ctx); _ -> G end,
+                       Filters  = case erlang:function_exported(Ctr,before_filter,2) of
+                                      true -> Filters0 ++ [Ctr]; _->Filters0 end,
                        lists:foldl(fun(F, {ok,Acc})       -> F:before_filter(O,Acc); 
                                       (F, {redirect,_}=R) -> R;
                                       (F, {error,_}=E)    -> E
