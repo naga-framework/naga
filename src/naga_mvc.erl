@@ -20,7 +20,7 @@ run(Req, []) ->
     wf:context(Ctx1),
     Elements = case Ctx1#cx.path of              
                 #{}=R -> #{application:=App,controller:=C,action:=A,method:=M,params:=P,bindings:=B}=R,
-                         try handle(App,C,A,M,P,B) catch C:E -> wf:error_page(C,E) end;
+                         try handle(App,C,A,M,P,B,[]) catch C:E -> wf:error_page(C,E) end;
                     _ -> try (Ctx1#cx.module):main() catch C:E -> wf:error_page(C,E) end
                end,
     Html = render(Elements),    
@@ -32,7 +32,7 @@ run(Req, []) ->
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2);
 
 run(Req, #route{type=mvc,is_steroid=true}=Route) ->
-    #route{application=App,controller=Module,action=Act,arity=A,want_session=WantSession}=Route,
+    #route{application=App,controller=Module,action=Act,arity=A,want_session=WantSession,opts=Opts}=Route,
     wf:state(status,200),
     Pid = spawn(fun() -> transition([]) end),
     wf:script(["var transition = {pid: '", wf:pickle(Pid), "', ",
@@ -48,7 +48,7 @@ run(Req, #route{type=mvc,is_steroid=true}=Route) ->
                             {P, _} = cowboy_req:path_info(Req),
                             {B, _} = cowboy_req:bindings(Req),
                             post_params(Route,M),
-                            try handle(App,Module,Act,M,P,B) catch C:E -> wf:error_page(C,E) end
+                            try handle(App,Module,Act,M,P,B,Opts) catch C:E -> wf:error_page(C,E) end
                end,
     Html    = render(Elements),   
     Actions = wf:actions(),
@@ -58,7 +58,7 @@ run(Req, #route{type=mvc,is_steroid=true}=Route) ->
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2);
 
 run(Req, #route{type=mvc,is_steroid=false}=Route) ->
-    #route{application=App,controller=C,action=Act,arity=A,want_session=WantSession} = Route,
+    #route{application=App,controller=C,action=Act,arity=A,want_session=WantSession,opts=Opts} = Route,
     wf:state(status,200),
     Ctx0 = wf:init_context(Req),
     Ctx  = Ctx0#cx{module=C},
@@ -70,7 +70,7 @@ run(Req, #route{type=mvc,is_steroid=false}=Route) ->
                            {P, _} = cowboy_req:path_info(Req),
                            {B, _} = cowboy_req:bindings(Req),
                            post_params(Route,M),
-                           try handle(App,C,Act,M,P,B) catch C:E -> wf:error_page(C,E) end
+                           try handle(App,C,Act,M,P,B,Opts) catch C:E -> wf:error_page(C,E) end
                end,    
     Html = render(Elements),
     Ctx2 = finish(Ctx,?CTX, false, WantSession),
@@ -120,23 +120,24 @@ set_cookies([],Req)-> Req;
 set_cookies([{Name,Value,Path,TTL}|Cookies],Req)->
     set_cookies(Cookies,wf:cookie_req(Name,Value,Path,TTL,Req)).
 
-handle(App,Mod,undefined,M,P,B) -> case erlang:function_exported(Mod,index,3) of 
-                                    true -> handle(App,Mod,index,M,P,B); _-> Mod:main() end;
-handle(App,Mod,A,M,undefined,B) -> handle(App,Mod,A,M,[],B);
-handle(App,Mod,A,M,P,B)         -> case before(App,Mod,req_ctx(App,Mod,A,M,P,B)) of
+handle(App,Mod,undefined,M,P,B,O) -> case erlang:function_exported(Mod,index,3) of 
+                                    true -> handle(App,Mod,index,M,P,B,O); _-> Mod:main() end;
+handle(App,Mod,A,M,undefined,B,O) -> handle(App,Mod,A,M,[],B,O);
+handle(App,Mod,A,M,P,B,O)         -> case before(App,Mod,req_ctx(App,Mod,A,M,P,B,O)) of
                                       {ok, Ctx} -> {Mod:A(M,P,Ctx),Ctx}; 
                                       {error,E} -> error(E);
                                       {redirect, R} -> wf:redirect(R) end.
 
-req_ctx(App,Mod,A,M,P,B)  -> #{'_application'=> App,
-                               '_method'     => M,
-                               '_controller' => Mod,
-                               '_action'     => A,
-                               '_params'     => P,                             
-                               '_bindings'   => B,
-                               script        => case wf:script() of undefined -> <<>>; S -> S end,
-                               '_base_url'   => case wf:config(App,base_url,"") of "/" -> ""; E -> E end
-                              }.
+req_ctx(App,Mod,A,M,P,B,O)  -> #{'_application'=> App,
+                                 '_method'     => M,
+                                 '_controller' => Mod,
+                                 '_action'     => A,
+                                 '_params'     => P,                             
+                                 '_bindings'   => B,
+                                 '_opts'       => O,
+                                 script        => case wf:script() of undefined -> <<>>; S -> S end,
+                                 '_base_url'   => case wf:config(App,base_url,"") of "/" -> ""; E -> E end
+                                }.
 
 before(App,Ctr,Ctx) -> O = [], %%FIXME: filter config
                        G = wf:config(App,filter,[]),                      

@@ -6,6 +6,8 @@
 
 init(_, _, _) -> {upgrade, protocol, cowboy_rest}.
 
+accept_gzip(<<"gzip,",_/binary>>) -> true;
+accept_gzip(_) -> false.
 
 rest_init(Req, {dir, Path, Extra}) when is_binary(Path) -> rest_init(Req, {dir, binary_to_list(Path), Extra});
 rest_init(Req, {dir, Path, Extra}) ->
@@ -121,6 +123,4 @@ get_file(Req, State={Path, {ok, #file_info{type=ets_regular}}, _}) ->
 		_ -> ok end end,
 	{{stream, size(Raw), Sendfile}, Req, State}.
 
-accept_gzip(<<"gzip,",_/binary>>) -> true;
-accept_gzip(_) -> false.
 

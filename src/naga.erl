@@ -157,9 +157,17 @@ locale(App)       -> wf:config(App,static_prefix,none).
 base_url(App)     -> wf:config(App,base_url,"/").
 base_url(App,Url) -> case base_url(App) of "/" -> Url; Base -> string:join([Base,Url],"") end.
 base_dir(App)     -> filename:join(lists:reverse(tl(lists:reverse(filename:split(priv_dir(App)))))).
-source_dir(App)   -> filename:join([base_dir(App), "src", "controller"]).                      
+ctrl_dir(App)     -> filename:join([base_dir(App), "src", "controller"]).                      
+view_dir(App)     -> filename:join([base_dir(App), "src", "view"]).                      
+model_dir(App)    -> filename:join([base_dir(App), "src", "model"]).                      
+static_dir(App)   -> {ok,[Rules]} = consult(App), 
+                     AppName = wf:to_list(App),
+                     [{Url,Dir}] = [{U1,D} || {U1,[_,Ap|_] = D} 
+                       <- [{U,filename:split(B)}||{U,H,{A,B,C}}=R<-Rules, 
+                           H == naga_static orelse H == n2o_static, A == dir ], 
+                      Ap == AppName],{Url,filename:join(Dir)}.
 
-%files(controller,App) -> [{F, module(F)}|| F <- mad_compile:files(source_dir(App),".erl")];
+%files(controller,App) -> [{F, module(F)}|| F <- mad_compile:files(ctrl_dir(App),".erl")];
 files(controller,App) -> naga_load:controller_files(App);
 files(view,App)   -> naga_load:view_files(App).
 module(F)         -> wf:atom([filename:basename(F, ".erl")]).
@@ -254,9 +262,12 @@ consult(App)            -> Path = wf:f("apps/~s/priv/~s.routes",[wf:to_list(App)
 dispatch_route(App,{Code, Handler, Opts}) 
                    when is_integer(Code) -> [{base_url(App,code_url(Code)), handler(App,Handler), opts(App,Handler,Opts)}];
 dispatch_route(App,{Url, Handler, Opts}) -> O = opts(App,Handler,Opts), 
+                                            io:format("URL ~p : ~p~n",[Url,O]),
                                             [{base_url(App,Url), handler(App,Handler), O}] ++ 
                                             case O of #route{is_steroid=true} -> 
-                                              [{ base_url(App,n2o_url(App,Url)), wf:config(naga,stream,n2o_stream), O}];
+                                              BaseUrl = base_url(App,n2o_url(App,Url)),
+                                              io:format("URL WS ~p : ~p~n",[BaseUrl,O]),
+                                              [{ BaseUrl, wf:config(naga,stream,n2o_stream), O}];
                                               _ -> [] 
                                             end;
 dispatch_route(App,Route)                -> wf:error(?MODULE, "Invalid route ~p~n",[App,Route]), [].
@@ -278,7 +289,7 @@ dispatch_doc(App)                        -> [{ base_url(App,doc_url(App,"/[:docn
 
 dispatch_mvc(App,CtrlModule)             -> [begin 
                                                Url = url(App,CtrlModule,A),
-                                               wf:info(?MODULE,"MVC URL ~p  <- ~p~n",[Url,{App,CtrlModule,A}]),
+                                               wf:info(?MODULE,"MVC URL ~p  <- ~p",[Url,{App,CtrlModule,A}]),
                                                {Url, wf:config(naga,bridge,naga_cowboy),
                                                 #route{type        = mvc,
                                                        application = App,                                                                     
@@ -296,7 +307,7 @@ dispatch(routes,Components)-> lists:foldr( fun(App,Acc) ->
                                                       dispatch_route(App,{Code, Handler, Opts}) ++ Acc                                
                                                     end, [], lists:flatten(Routes));
                                      {error,_} = Err -> 
-                                        wf:error(?MODULE, "Missing or invalid NAGA routes file: ~p~n~p~n", 
+                                        wf:error(?MODULE, "Missing or invalid NAGA routes file: ~p:~p", 
                                         [route_file(App), Err]), [] 
                                    end| Acc] 
                                  end, [], Components);
@@ -314,7 +325,7 @@ dispatch(doc, Components)  -> lists:foldr(fun(App,Acc)->
 
 dispatch(mvc, Components)  -> lists:foldr(fun(App,Acc)->
                                             Controllers = files(controller,App),
-                                            wf:info(?MODULE, "MVC CTRL ~p~n",[Controllers]),
+                                            wf:info(?MODULE, "MVC CTRL ~p",[Controllers]),
                                             [lists:foldr(fun({_,M},Bcc) ->
                                                             dispatch_mvc(App,M) ++ Bcc
                                                          end, [], Controllers)] ++ Acc
