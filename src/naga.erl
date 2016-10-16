@@ -39,16 +39,22 @@ trans(A,X,L)         -> case naga_lang:lookup(A,{wf:to_list(L),X}) of
                           E -> E end.
 
 start(App) when is_atom(App) -> start([App]);
-start(Apps) -> [start_listeners(App, protoOpts(mode(),App)) || App <- Apps].
+start(Apps) -> [case protoOpts(mode(),App) of
+                 {error, Err} -> wf:error(?MODULE,"Cannot Start Listener (~p)"
+                                          " for reason: ~p~n",[App,Err]),{App, Err};
+                  ProtoOpts -> start_listeners(App, ProtoOpts) end || App <- Apps].
 
 protoOpts(prod,App) -> Modules = wf:config(App,modules,[]),
                        Components = [App] ++ Modules,
-                       DispatchApps = read_dump_file(Components),
-                       io:format("MODE PROD ~p~n",[DispatchApps]),
-                       _AppsInfo = boot_apps(Components),
-                       [{env,[{application, {App,Modules}} %,{appsInfo, AppsInfo}                         
-                             ,{dispatch, cowboy_router:compile(DispatchApps)}]}
-                             ,{middlewares, wf:config(naga,middlewares,[cowboy_router,cowboy_handler])}];
+                       case read_dump_file(Components) of
+                        {error, Raison} = Err -> Err; 
+                        DispatchApps -> 
+                         io:format("MODE PROD ~p~n",[DispatchApps]),
+                         _AppsInfo = boot_apps(Components),
+                         [{env,[{application, {App,Modules}} %,{appsInfo, AppsInfo}                         
+                               ,{dispatch, cowboy_router:compile(DispatchApps)}]}
+                               ,{middlewares, wf:config(naga,middlewares,[cowboy_router,cowboy_handler])}]
+                       end;
 
 protoOpts(dev ,App) -> Modules = wf:config(App,modules,[]),
                        Components = [App] ++ Modules,
@@ -73,8 +79,9 @@ put_dispatch(App,Modules,Rule) ->
   ets:insert(?MODULE,{{App,Rule},Rules}),
   Rules.
 
-%%lists of rules for each modules.
-
+match(App,Path) ->
+  [{_, Dispatch}]= ets:lookup(?MODULE, {App,dispatch}),
+  naga_router:match(Dispatch, <<>>, Path).
 
 dispatch({dev,Components}) -> 
       App = hd(Components),
@@ -242,17 +249,23 @@ opts(_App, H, Opts)
         when is_atom(H) -> Opts.
 
 read_dump_file(Components)
-      when is_list(Components)-> L = case read_dump_file(hd(Components)) of {ok, R} -> R;
-                                         {error, enoent} -> dispatch(Components) end,
-                                 lists:flatten(L);
+      when is_list(Components)-> App = hd(Components),
+                                 case read_dump_file(App) of 
+                                  {ok, R} -> R;
+                                  {error, enoent} -> 
+                                    Path = naga:route_file(App),
+                                    case filelib:is_file(Path) of
+                                      true -> lists:flatten(dispatch(Components));
+                                      false-> {error, wf:f("Missing route file (~s)",[Path])}
+                                    end 
+                                 end;
 read_dump_file(App)
-     when is_atom(App)  -> Path = wf:f("apps/~s/priv/~s.routes.dat",[wf:to_list(App),wf:to_list(App)]), %%FIXME, window, deps?
+     when is_atom(App)  -> Path = dump_file(App),
                            case mad_repl:load_file(Path) of
                                 {ok, ETSFile} -> {ok, ETSFile}; 
                                 _ ->  file:read_file(Path) end.
 
-consult(App)            -> Path = wf:f("apps/~s/priv/~s.routes",[wf:to_list(App),wf:to_list(App)]), %%FIXME, window, deps?
-                           case mad_repl:load_file(Path) of
+consult(App)            -> case mad_repl:load_file(route_file(App)) of
                                 {ok, ETSFile} -> 
                                      %wf:info(?MODULE,"LOAD ROUTE FILE from bundle. ~s", [Path]),
                                      {ok, mad_tpl:consult(ETSFile)};
@@ -262,11 +275,11 @@ consult(App)            -> Path = wf:f("apps/~s/priv/~s.routes",[wf:to_list(App)
 dispatch_route(App,{Code, Handler, Opts}) 
                    when is_integer(Code) -> [{base_url(App,code_url(Code)), handler(App,Handler), opts(App,Handler,Opts)}];
 dispatch_route(App,{Url, Handler, Opts}) -> O = opts(App,Handler,Opts), 
-                                            io:format("URL ~p : ~p~n",[Url,O]),
+                                            %io:format("URL ~p : ~p~n",[Url,O]),
                                             [{base_url(App,Url), handler(App,Handler), O}] ++ 
                                             case O of #route{is_steroid=true} -> 
                                               BaseUrl = base_url(App,n2o_url(App,Url)),
-                                              io:format("URL WS ~p : ~p~n",[BaseUrl,O]),
+                                              %io:format("URL WS ~p : ~p~n",[BaseUrl,O]),
                                               [{ BaseUrl, wf:config(naga,stream,n2o_stream), O}];
                                               _ -> [] 
                                             end;
@@ -303,12 +316,12 @@ dispatch_mvc(App,CtrlModule)             -> [begin
 dispatch(routes,Components)-> lists:foldr( fun(App,Acc) -> 
                                     [case consult(App) of
                                      {ok, Routes} ->    
-                                        lists:foldr(fun({Code, Handler, Opts}, Acc) ->
-                                                      dispatch_route(App,{Code, Handler, Opts}) ++ Acc                                
+                                        lists:foldr(fun({Code, Handler, Opts}, Bcc) ->
+                                                      dispatch_route(App,{Code, Handler, Opts}) ++ Bcc                                
                                                     end, [], lists:flatten(Routes));
                                      {error,_} = Err -> 
                                         wf:error(?MODULE, "Missing or invalid NAGA routes file: ~p:~p", 
-                                        [route_file(App), Err]), [] 
+                                        [route_file(App), Err]), Err
                                    end| Acc] 
                                  end, [], Components);
 

@@ -2,7 +2,6 @@
 -export([index/3,event/1]).
 -export([init/3,terminate/3,handle/2]).
 -export([view/3,static/3]).
-%-compile(export_all).
 -default_action(index).
 -actions([index]).
 
@@ -12,8 +11,10 @@
 -include("naga.hrl").
 
  % in your route file.
- % ,{"/$v/[...]", naga_indexof, {<APPNAME>,view,"/$v"}}
- % ,{"/$c/[...]", naga_indexof, {<APPNAME>,controller,"/$c"}}
+ % ,{"/<BaseURL>/[...]", naga_indexof, {<APPNAME>,<TYPE>,"/<BaseURL>"}}
+ % where TYPE: view|static|controller
+ % i.e:
+ % ,{"/$v/[...]", naga_indexof, {<APPNAME>,view,"/$c"}}
  % ,{"/$s/[...]", naga_indexof, {<APPNAME>,static,"/$s"}}
 
 init(_Transport, Req, Opts)      -> {ok, Req, Opts}.
@@ -52,7 +53,6 @@ index(<<"GET">>, _, #{'_opts' := {App,Type,Base},
 %% ----------------
 event(Ev) -> wf:info(?MODULE,"received event ~p~n",[Ev]).
 
-% {App|Theme,Ctrl,Act,".html"}
 %% ----------------
 %% INTERNAL FUNCTION
 %% ----------------
@@ -63,6 +63,7 @@ new_script(App,PicklePid) ->
   Port = wf:to_list(wf:config(App,websocket_port,wf:config(App,port,8000))),
   NewScript = ["var transition = {pid: '", PicklePid, "', ", "port:'", Port ,"'}"].
 
+%%TODO:use direct graph
 view(App1,PathInfo,Base) ->
   App = wf:config(App1,theme,App1),
   BaseUrl = naga:base_url(App),
@@ -70,7 +71,6 @@ view(App1,PathInfo,Base) ->
   Files   = naga:files(view, App),
   lists:foldr(fun({X,_},Acc) ->
                 Name=join(split(X) -- split(ViewDir)),
-
                 {ok, I} = file:read_file_info(X, [{time, universal}]),
                 [#tr{cells=[
                    #td{class=[n],body=[
