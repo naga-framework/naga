@@ -44,16 +44,19 @@ start(Apps) -> [case protoOpts(mode(),App) of
                                           " for reason: ~p~n",[App,Err]),{App, Err};
                   ProtoOpts -> start_listeners(App, ProtoOpts) end || App <- Apps].
 
+middlewares(prod) -> wf:config(naga,middlewares,[cowboy_router,cowboy_handler]);
+middlewares(dev)  -> wf:config(naga,middlewares,[naga_router,cowboy_handler]).
+
 protoOpts(prod,App) -> Modules = wf:config(App,modules,[]),
                        Components = [App] ++ Modules,
                        case read_dump_file(Components) of
                         {error, Raison} = Err -> Err; 
                         DispatchApps -> 
-                         io:format("MODE PROD ~p~n",[DispatchApps]),
+                         wf:info(?MODULE,"MODE PROD ~p~n",[DispatchApps]),
                          _AppsInfo = boot_apps(Components),
                          [{env,[{application, {App,Modules}} %,{appsInfo, AppsInfo}                         
                                ,{dispatch, cowboy_router:compile(DispatchApps)}]}
-                               ,{middlewares, wf:config(naga,middlewares,[cowboy_router,cowboy_handler])}]
+                               ,{middlewares, middlewares(prod)}]
                        end;
 
 protoOpts(dev ,App) -> Modules = wf:config(App,modules,[]),
@@ -66,7 +69,7 @@ protoOpts(dev ,App) -> Modules = wf:config(App,modules,[]),
                        ets:insert(?MODULE,{apps_info,AppsInfo}),
                        [{env,[{application, {App,Modules}}                         
                              ,{dispatch, []}]}
-                             ,{middlewares, wf:config(naga,middlewares,[naga_router,cowboy_handler])}].
+                             ,{middlewares, middlewares(dev)}].
 get_dispatch(App) ->
    D = lists:foldr(fun(Rule,Acc)-> 
                 [{_,Rules}] = ets:lookup(?MODULE,{App,Rule}),
@@ -315,13 +318,16 @@ dispatch_mvc(App,CtrlModule)             -> [begin
 
 dispatch(routes,Components)-> lists:foldr( fun(App,Acc) -> 
                                     [case consult(App) of
+                                     {ok,[]} = Err -> 
+                                        io:format("Invalid NAGA routes file: ~p", 
+                                        [route_file(App)]), halt(abort,[]);                                      
                                      {ok, Routes} ->    
                                         lists:foldr(fun({Code, Handler, Opts}, Bcc) ->
                                                       dispatch_route(App,{Code, Handler, Opts}) ++ Bcc                                
                                                     end, [], lists:flatten(Routes));
-                                     {error,_} = Err -> 
-                                        wf:error(?MODULE, "Missing or invalid NAGA routes file: ~p:~p", 
-                                        [route_file(App), Err]), Err
+                                     {error,enoent} = Err -> 
+                                        io:format("Missing NAGA routes file: ~p", 
+                                        [route_file(App)]), halt(abort,[])
                                    end| Acc] 
                                  end, [], Components);
 
