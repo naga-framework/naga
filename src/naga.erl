@@ -64,7 +64,7 @@ protoOpts(dev ,App) -> Modules = wf:config(App,modules,[]),
                        DispatchApps = dispatch({dev,Components}),
                        ets:insert(?MODULE,{{App,rules},DispatchApps}),
                        ets:insert(?MODULE,{{App,dispatch},cowboy_router:compile(DispatchApps)}),
-                       io:format("MODE DEV ~p~n",[DispatchApps]),
+                       wf:info(?MODULE,"MODE DEV ~p~n",[DispatchApps]),
                        AppsInfo = boot_apps(Components),
                        ets:insert(?MODULE,{apps_info,AppsInfo}),
                        [{env,[{application, {App,Modules}}                         
@@ -274,7 +274,8 @@ consult(App)            -> case mad_repl:load_file(route_file(App)) of
                                      {ok, mad_tpl:consult(ETSFile)};
                                 _ -> file:consult(route_file(App)) end.
 
-
+routeIndexof(A,O) ->  #route{type=mvc,application=A,controller=naga_indexof,
+                        action=index,want_session=true,is_steroid=true,opts=O}.
 dispatch_route(App,{Code, Handler, Opts}) 
                    when is_integer(Code) -> [{base_url(App,code_url(Code)), handler(App,Handler), opts(App,Handler,Opts)}];
 dispatch_route(App,{Url, Handler, Opts}) -> O = opts(App,Handler,Opts), 
@@ -284,7 +285,13 @@ dispatch_route(App,{Url, Handler, Opts}) -> O = opts(App,Handler,Opts),
                                               BaseUrl = base_url(App,n2o_url(App,Url)),
                                               %io:format("URL WS ~p : ~p~n",[BaseUrl,O]),
                                               [{ BaseUrl, wf:config(naga,stream,n2o_stream), O}];
-                                              _ -> [] 
+                                              _ -> case Handler of
+                                                    naga_indexof ->  
+                                                      BaseUrl = base_url(App,n2o_url(App,Url)),
+                                                      R = routeIndexof(App,Opts),
+                                                      [{ BaseUrl, wf:config(naga,stream,n2o_stream), R}];
+                                                    _ -> []
+                                                   end 
                                             end;
 dispatch_route(App,Route)                -> wf:error(?MODULE, "Invalid route ~p~n",[App,Route]), [].
 
