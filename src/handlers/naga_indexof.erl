@@ -69,8 +69,9 @@ view(App1,PathInfo,Base) ->
   BaseUrl = naga:base_url(App),
   ViewDir = naga:view_dir(App),
   Files   = naga:files(view, App),
+  {ok, Cwd} = file:get_cwd(),
   lists:foldr(fun({X,_},Acc) ->
-                Name=join(split(X) -- split(ViewDir)),
+                Name=join([BaseUrl]++(split(X) -- split(Cwd))-- split(ViewDir)),
                 {ok, I} = file:read_file_info(X, [{time, universal}]),
                 [#tr{cells=[
                    #td{class=[n],body=[
