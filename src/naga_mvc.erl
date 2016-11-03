@@ -7,6 +7,7 @@
 -include("naga.hrl").
 -export([run/2,transition/1]).
 -export([i18n_undefined/1]).
+-export([index/3,before_filters/2]).
 
 transition(Actions) -> receive {'INIT',A} -> transition(A); {'N2O',Pid} -> Pid ! {actions,Actions} end.
 run(Req, []) ->
@@ -93,6 +94,7 @@ run(Req, #route{type=view,application=App,view=Module}=R) ->
     Req2 = wf:response(Html,Req),
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2).
 
+before_filters(_,_) -> [].
 index(_,_,_) -> {ok,[]}.
 
 no_session(L)-> lists:keydelete(session,1,L).
