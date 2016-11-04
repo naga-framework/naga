@@ -226,7 +226,10 @@ url(App,M)        -> case string:tokens(wf:to_list(M), "_") of
                          base_url(App,"/"++string:join(F,"/"))
                      end. 
 
-get_kv(K, O, D)  -> V = proplists:get_value(K,O,D), KV = {K,V}, {KV, O -- [KV]}.
+get_kv({K1,K2}, O, D)  -> case proplists:get_value(K1,O) of
+                            undefined -> get_kv(K2, O, D);
+                            V         -> KV = {K1,V}, {KV, O -- [KV]} end;
+get_kv(K, O, D)        -> V = proplists:get_value(K,O,D), KV = {K,V}, {KV, O -- [KV]}.
 %module(A,C)      -> wf:atom([A,C]).
 %controller(A,M)  -> wf:atom([wf:to_list(M) -- wf:to_list([A,"_"])]).
 code_url(Code)   -> wf:to_list(["/$_",Code,"_$"]).
@@ -235,18 +238,18 @@ handler(_App,H) when is_list(H) -> wf:config(naga,bridge,naga_cowboy);
 handler(_App,H) when is_atom(H) -> H.
 
 opts(App, H, Opts) 
-        when is_list(H) -> {{application,App1},O } = get_kv(application,H,App),
-                           {{controller,C},    O1} = get_kv(controller,O,index),
-                           {{action,Act},      P } = get_kv(action,O1,index), 
-                           #route{type=mvc,
-                                  application=App1,
-                                  controller=C,
-                                  action=Act,
-                                  arity=3,
+        when is_list(H) -> {{_,App1},O } = get_kv({application,wf:config(naga,def_application,app)},H,App),
+                           {{_,C},   O1} = get_kv({controller,wf:config(naga,def_controller,ctrl)},O,index),
+                           {{_,Act}, P } = get_kv({action,wf:config(naga,def_action,act)},O1,index), 
+                           #route{type        =mvc,
+                                  application =App1,
+                                  controller  =C,
+                                  action      =Act,
+                                  arity       =3,
                                   want_session=want_session(C),
-                                  is_steroid=is_steroid(C),
-                                  params=P,
-                                  opts=Opts};
+                                  is_steroid  =is_steroid(C),
+                                  params      =P,
+                                  opts        =Opts};
 
 opts(_App, H, Opts) 
         when is_atom(H) -> Opts.
