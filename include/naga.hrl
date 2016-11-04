@@ -29,6 +29,8 @@
 -define(CTYPE_CSS,                [{<<"Content-Type">>,<<"text/css">>}]).
 -define(CTYPE_JSON,               [{<<"Content-Type">>,<<"application/json">>}]).
 -define(CTYPE_PLAIN,              [{<<"Content-Type">>,<<"text/plain">>}]).
+%-define(CTYPE_YAML,               [{<<"Content-Type">>,<<"text/yaml">>}]). ??
+-define(CTYPE_YAML,               [{<<"Content-Type">>,<<"text/plain">>}]).
 
 -record(route,{type        =[], 
                application =[],

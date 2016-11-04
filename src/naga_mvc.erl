@@ -217,7 +217,8 @@ render({{redirect,L,H},Ctx})     -> header(H++[{<<"Location">>,naga:location(L,C
                                     wf:state(status,302),[];
 render({{moved,L},Ctx})          -> render({{moved,L,[]},Ctx});
 render({{moved,L,H},Ctx})        -> header(H++[{<<"Location">>,naga:location(L,Ctx)}]),
-                                    wf:state(status,301),[];                                    
+                                    wf:state(status,301),[];
+
 %% jsond, json render with DTL
 render({{jsond,V},Ctx})          -> render({{jsond,V,[]},Ctx});
 render({{jsond,V,H},Ctx})        -> render({{jsond,V,H,200},Ctx});
@@ -256,6 +257,11 @@ render({{render_other,L,V},Ctx})
                                     Tpl = tpl({App1,C1,A1,Ext},Ctx),
                                     {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),Io;
 
+render({{yaml,V},Ctx})           -> render({{yaml,V,[]},Ctx});
+render({{yaml,V,H},Ctx})         -> header(H++?CTYPE_YAML),
+                                    #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
+                                    Tpl = tpl({App,C,A,"yaml"},Ctx),
+                                    {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),Io;  
 render({{js,V},Ctx})             -> render({{js,V,[]},Ctx});
 render({{js,V,H},Ctx})           -> header(H++?CTYPE_JS),
                                     #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
