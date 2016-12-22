@@ -137,7 +137,7 @@ handle(App,Mod,undefined,M,P,B,O) -> case erlang:function_exported(Mod,index,3) 
                                     true -> handle(App,Mod,index,M,P,B,O); _-> Mod:main() end;
 handle(App,Mod,A,M,undefined,B,O) -> handle(App,Mod,A,M,[],B,O);
 handle(App,Mod,A,M,P,B,O)         -> case before(App,Mod,req_ctx(App,Mod,A,M,P,B,O)) of
-                                      {ok, Ctx} -> {Mod:A(M,P,Ctx),Ctx}; 
+                                      {ok, Ctx} -> {middle(App,Mod,Mod:A(M,P,Ctx),Ctx),Ctx}; 
                                       {error,E} -> error(E);
                                       {redirect, R} -> wf:redirect(R) end.
 
@@ -152,18 +152,38 @@ req_ctx(App,Mod,A,M,P,B,O)  -> #{'_application'=> App,
                                  '_base_url'   => case wf:config(App,base_url,"") of "/" -> ""; E -> E end
                                 }.
 
-before(App,Ctr,Ctx) -> O = [], %%FIXME: filter config
-                       G = wf:config(App,filter,[]),                      
+before(App,Ctr,Ctx) -> O = wf:config(App,controller_filters_config,[]), %%FIXME: filter config
+                       G = wf:config(App,controller_filters,[]),                      
                        Filters0 = case erlang:function_exported(Ctr,before_filters,2) of 
                                       true -> Ctr:before_filters(G,Ctx); _ -> G end,
-                       Filters  = case erlang:function_exported(Ctr,before_filter,2) of
-                                      true -> Filters0 ++ [Ctr]; _->Filters0 end,
-                       lists:foldl(fun(F, {ok,Acc})       -> F:before_filter(O,Acc); 
+                       {Filters,_} = lists:partition(fun(X) ->
+                                                        erlang:function_exported(X,before_filter,2)
+                                                     end, Filters0 ++ [Ctr]),
+                       %io:format("BEFORE FILTERS ~p~n",[Filters]),
+                       lists:foldl(fun(F, {ok,Acc}) -> 
+                                        FC = proplists:get_value(F,O,[]),
+                                        F:before_filter(FC,Acc); 
                                       (F, {redirect,_}=R) -> R;
                                       (F, {error,_}=E)    -> E
                                    end, {ok,Ctx},Filters).
 
-%%todo: middle, after filter?
+%middle(A,C,Vars,Ctx) -> Vars.
+middle(A,C,Vars,Ctx) -> O = wf:config(A,controller_filters_config,[]),
+                        G = wf:config(A,controller_filters,[]),
+                        Filters0 = case erlang:function_exported(C,middle_filters,2) of
+                                    true -> C:middle_filters(G,Ctx); _ -> G end,
+                        {Filters,_} = lists:partition(fun(X) ->
+                                                       erlang:function_exported(X,middle_filter,3)
+                                                      end, Filters0 ++ [C]),
+                        %io:format("MIDDLE FILTERS ~p~n",[Filters]), 
+                        lists:foldl(fun(_F,{S,P,H}) when is_integer(S) -> {S,P,H};
+                                       (_F,{ok,P,H})                   -> {ok,P,H};
+                                       (F,Result) when is_atom(F)      -> 
+                                        FC = proplists:get_value(F,O,[]),
+                                        F:middle_filter(Result,FC,Ctx)
+                                    end, Vars, Filters).
+
+%%todo: after filter? when integration crs_token 
 %%todo: 
 %%todo: not_found
 %%todo: {stream, Generator::function(), Acc0}

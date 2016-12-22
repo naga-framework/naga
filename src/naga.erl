@@ -54,7 +54,8 @@ protoOpts(prod,App) -> Modules = wf:config(App,modules,[]),
                         DispatchApps -> 
                          wf:info(?MODULE,"MODE PROD ~p~n",[DispatchApps]),
                          _AppsInfo = boot_apps(Components),
-                         [{env,[{application, {App,Modules}} %,{appsInfo, AppsInfo}                         
+                         [{env,[{application, {App,Modules}} %,{appsInfo, AppsInfo}
+                               ,{max_keepalive, wf:config(App,max_keepalive,1024)}                         
                                ,{dispatch, cowboy_router:compile(DispatchApps)}]}
                                ,{middlewares, middlewares(prod)}]
                        end;
@@ -255,7 +256,7 @@ opts(_App, H, Opts)
         when is_atom(H) -> Opts.
 
 read_dump_file(Components)
-      when is_list(Components)-> App = hd(Components),
+     when is_list(Components)-> App = hd(Components),
                                  case read_dump_file(App) of 
                                   {ok, R} -> R;
                                   {error, enoent} -> 
@@ -266,10 +267,10 @@ read_dump_file(Components)
                                     end 
                                  end;
 read_dump_file(App)
-     when is_atom(App)  -> Path = dump_file(App),
-                           case mad_repl:load_file(Path) of
-                                {ok, ETSFile} -> {ok, ETSFile}; 
-                                _ ->  file:read_file(Path) end.
+     when is_atom(App)       -> Path = dump_file(App),
+                                case mad_repl:load_file(Path) of
+                                 {ok, ETSFile} -> {ok, ETSFile}; 
+                                 _ ->  file:read_file(Path) end.
 
 consult(App)            -> case mad_repl:load_file(route_file(App)) of
                                 {ok, ETSFile} -> 
@@ -308,7 +309,7 @@ dispatch_view(App,ViewModule)
                                                      arity       = 0,
                                                      want_session= false,
                                                      is_steroid  = false}}].
-
+%%FIXME
 dispatch_doc(App)                        -> [{ base_url(App,doc_url(App,"/[:docname]")), 
                                               wf:config(naga,bridge,naga_cowboy), 
                                             [#route{type=doc,application=App}]}].
@@ -473,4 +474,18 @@ to_seconds()  -> to_seconds(calendar:local_time()).
 to_seconds(D) -> calendar:datetime_to_gregorian_seconds(D).
 to_time(S)    -> calendar:gregorian_seconds_to_datetime(S).
 
+expired(Issued) -> Issued < calendar:local_time().
+
+expire_in(Issued) -> 
+  calendar:time_difference(calendar:local_time(),Issued).
+
+expire(SecondsToLive) ->
+    Seconds = calendar:datetime_to_gregorian_seconds(calendar:local_time()),
+    DateTime = calendar:gregorian_seconds_to_datetime(Seconds + SecondsToLive),
+    cow_date:rfc2109(DateTime).
+
+till(TTL) -> till(calendar:local_time(),TTL).
+till(Now,TTL) ->
+    calendar:gregorian_seconds_to_datetime(
+        calendar:datetime_to_gregorian_seconds(Now) + TTL).
 
