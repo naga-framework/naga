@@ -44,35 +44,6 @@ start(Apps) -> [case protoOpts(mode(),App) of
                                           " for reason: ~p~n",[App,Err]),{App, Err};
                   ProtoOpts -> start_listeners(App, ProtoOpts) end || App <- Apps].
 
-<<<<<<< HEAD
-middlewares(prod) -> wf:config(naga,middlewares,[cowboy_router,cowboy_handler]);
-middlewares(dev)  -> wf:config(naga,middlewares,[naga_router,cowboy_handler]).
-
-protoOpts(prod,App) -> Modules = wf:config(App,modules,[]),
-                       Components = [App] ++ Modules,
-                       case read_dump_file(Components) of
-                        {error, Raison} = Err -> Err; 
-                        DispatchApps -> 
-                         wf:info(?MODULE,"MODE PROD ~p~n",[DispatchApps]),
-                         _AppsInfo = boot_apps(Components),
-                         [{env,[{application, {App,Modules}} %,{appsInfo, AppsInfo}
-                               ,{max_keepalive, wf:config(App,max_keepalive,1024)}                         
-                               ,{dispatch, cowboy_router:compile(DispatchApps)}]}
-                               ,{middlewares, middlewares(prod)}]
-                       end;
-
-protoOpts(dev ,App) -> Modules = wf:config(App,modules,[]),
-                       Components = [App] ++ Modules,
-                       DispatchApps = dispatch({dev,Components}),
-                       ets:insert(?MODULE,{{App,rules},DispatchApps}),
-                       ets:insert(?MODULE,{{App,dispatch},cowboy_router:compile(DispatchApps)}),
-                       wf:info(?MODULE,"MODE DEV ~p~n",[DispatchApps]),
-                       AppsInfo = boot_apps(Components),
-                       ets:insert(?MODULE,{apps_info,AppsInfo}),
-                       [{env,[{application, {App,Modules}}                         
-                             ,{dispatch, []}]}
-                             ,{middlewares, middlewares(dev)}].
-=======
 %middlewares(prod) -> wf:config(naga,middlewares,[cowboy_router,cowboy_handler]);
 middlewares()  -> wf:config(naga,middlewares,[naga_router,cowboy_handler]).
 
@@ -114,7 +85,6 @@ protoOpts(Mode,App) ->
              ,{middlewares, middlewares()}]
   end.
 
->>>>>>> dispatch_compiler
 get_dispatch(App) ->
    D = lists:foldr(fun(Rule,Acc)-> 
                 [{_,Rules}] = ets:lookup(?MODULE,{App,Rule}),
