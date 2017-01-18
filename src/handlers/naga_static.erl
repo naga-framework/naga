@@ -15,7 +15,7 @@ rest_init(Req, {dir, Path, Extra}) ->
 	{PathInfo, Req2} = cowboy_req:path_info(Req),
 	Info = {ok, #file_info{type=regular,size=0}},
 	Path1 = filename:join([Path|PathInfo]),
-	%wf:info(?MODULE,"Rest Init: ~p~n\r",[Path1]),
+	wf:info("Rest Init: ~p~n\r",[Path1]),
   StringPath = wf:to_list(unicode:characters_to_binary(Path1,utf8,utf8)),
   [_Type,Name|RestPath]=SplitPath = filename:split(StringPath),
 	FileName = filename:absname(StringPath),

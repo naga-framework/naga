@@ -44,6 +44,7 @@ start(Apps) -> [case protoOpts(mode(),App) of
                                           " for reason: ~p~n",[App,Err]),{App, Err};
                   ProtoOpts -> start_listeners(App, ProtoOpts) end || App <- Apps].
 
+<<<<<<< HEAD
 middlewares(prod) -> wf:config(naga,middlewares,[cowboy_router,cowboy_handler]);
 middlewares(dev)  -> wf:config(naga,middlewares,[naga_router,cowboy_handler]).
 
@@ -71,6 +72,49 @@ protoOpts(dev ,App) -> Modules = wf:config(App,modules,[]),
                        [{env,[{application, {App,Modules}}                         
                              ,{dispatch, []}]}
                              ,{middlewares, middlewares(dev)}].
+=======
+%middlewares(prod) -> wf:config(naga,middlewares,[cowboy_router,cowboy_handler]);
+middlewares()  -> wf:config(naga,middlewares,[naga_router,cowboy_handler]).
+
+convert(P) -> P1 = split(P) -- ["/"],
+              convert(P1, []).
+
+convert([],Acc)          -> lists:reverse(Acc);
+convert(["[...]"|T],Acc) -> convert(T,['*']++Acc);
+convert([[$:|T1]|T],Acc) -> convert(T,[wf:atom([T1])]++Acc);
+convert([H|T],Acc)       -> convert(T,[H]++Acc).
+
+dispatch_routes(App) -> 
+  Modules = wf:config(App,modules,[]),
+  Components = [App] ++ Modules,
+  case read_dump_file(Components) of
+   {error, Raison} = Err -> Err; 
+   [{_,R}] -> 
+    {Rules,N} = lists:foldl(fun({A,B,C},{Acc,Count}) ->
+                                  {Acc++[{Count,convert(A),B,C}], Count+1};
+                                ({N,A,B,C},{Acc,Count}) ->
+                                  {Acc++[{N,convert(A),B,C}], Count}
+                            end,{[],1}, R),
+    DispatchModule = wf:atom([App,dispatch_routes]),
+    ok = dispatch_compiler:compile_load(DispatchModule,Rules),
+    {ok, App, Modules, Components, DispatchModule, N, Rules}
+  end.
+
+protoOpts(Mode,App) ->
+  io:format("MODE PROD ~p~n",[Mode]), 
+  case dispatch_routes(App) of
+    {error,_} = Err -> Err;
+    {ok, App, Modules, Components, DispatchModule, N, Rules} ->
+      _AppsInfo = boot_apps(Components),
+      ets:insert(?MODULE,{{App,rules},{DispatchModule,N,Rules}}),
+      %%cowboy_router:compile(DispatchApps)
+      [{env,[{application, {App,Modules}} 
+            %,{appsInfo, AppsInfo}                         
+             ,{dispatch, DispatchModule}]}
+             ,{middlewares, middlewares()}]
+  end.
+
+>>>>>>> dispatch_compiler
 get_dispatch(App) ->
    D = lists:foldr(fun(Rule,Acc)-> 
                 [{_,Rules}] = ets:lookup(?MODULE,{App,Rule}),
@@ -92,7 +136,7 @@ dispatch({dev,Components}) ->
       Rules = [routes, view, doc, mvc],
       D = lists:foldr(fun(Rule,Acc)-> 
                         R = dispatch(Rule,order(Components)),
-                        %wf:info(?MODULE,"~p:~p:~p",[App,Rule,R]),
+                        wf:info(?MODULE,"~p:~p:~p",[App,Rule,R]),
                         ets:insert(?MODULE,{{App,Rule},R}),
                         R ++ Acc 
                       end,[],Rules),
@@ -197,15 +241,15 @@ priv_dir(App)     -> case code:priv_dir(App) of
 
 want_session(M)  -> E = module_info(M,attributes), [R]=proplists:get_value(session,E,[true]), R. %% by default true
 default_action(M)-> E = module_info(M,attributes),
-                   case proplists:get_value(default_action,E) of 
-                    undefined -> case erlang:function_exported(M,index,3) of 
-                                  true  -> {dft,index};
-                                  false -> case erlang:function_exported(M,main,0) of 
-                                                true  -> {dft,main}; 
-                                                false -> [] 
-                                           end 
-                                 end;
-                    [Default] -> {dft,Default} end.
+                    case proplists:get_value(default_action,E) of 
+                      undefined -> case erlang:function_exported(M,index,3) of 
+                                    true  -> {dft,index};
+                                    false -> case erlang:function_exported(M,main,0) of 
+                                                  true  -> {dft,main}; 
+                                                  false -> [] 
+                                             end 
+                                   end;
+                      [Default] -> {dft,Default} end.
 actions(M)       -> Attr = module_info(M,attributes), 
                     Actions = lists:usort(proplists:get_value(actions,Attr,[]) ++ [default_action(M)]),
                     E = module_info(M,exports),
@@ -488,4 +532,3 @@ till(TTL) -> till(calendar:local_time(),TTL).
 till(Now,TTL) ->
     calendar:gregorian_seconds_to_datetime(
         calendar:datetime_to_gregorian_seconds(Now) + TTL).
-
