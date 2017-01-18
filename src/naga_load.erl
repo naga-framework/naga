@@ -5,7 +5,7 @@
 -compile(export_all).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([start_link/1,start_link/0]).
--export([onload/1,onnew/2,topsort/1,watch/1,unwatch/1]).
+-export([onload/1,onnew/2,topsort/1,watch/1,unwatch/1,static/1,routes/1,lang/1]).
 -export([view_graph/1,app/1,parents/1,deps/1,source/1, source/2, is_view/1,view_files/1, controller_files/1]).
 -record(state,{graphs=#{}}).
 
@@ -14,6 +14,9 @@ start_link(A)-> gen_server:start_link({local, ?SERVER}, ?MODULE, A, []).
 init(Apps)   -> wf:info(?MODULE,"Starting naga load. watch ~p",[Apps]), 
                 active_events:subscribe_onload({?MODULE,onload}), 
                 active_events:subscribe_onnew({?MODULE,onnew}),
+                active_events:subscribe(lang,{?MODULE,lang}),
+                active_events:subscribe(static,{?MODULE,static}),
+                active_events:subscribe(routes,{?MODULE,routes}),
                 %active_events:subscribe_compile({?MODULE,oncompile}),
                 %fixme: watch apps after they started, doesn't mean here. 
                 %in dev mode               
@@ -27,6 +30,10 @@ handle_cast({watch, App}, State)             -> {noreply, watch(App,State)};
 handle_cast({unwatch, App}, State)           -> {noreply, unwatch(App,State)};
 handle_cast({onload, Module}, State)         -> {ok, N} = onload(Module, State),{noreply, N};
 handle_cast({onnew, Module}, State)          -> {ok, N} = onnew(Module, State),{noreply, N};
+handle_cast({static, Module}, State)         -> {ok, N} = static(Module, State),{noreply, N};
+handle_cast({lang, Module}, State)           -> {ok, N} = lang(Module, State),{noreply, N};
+handle_cast({routes, Module}, State)         -> {ok, N} = routes(Module, State),{noreply, N};
+
 handle_cast(_Request, State)                 -> {noreply, State}.
 handle_info(Info, State)                     -> {noreply, State}.
 terminate(_Reason, _State)                   -> ok.
@@ -35,23 +42,42 @@ code_change(_OldVsn, State, _Extra)          -> {ok, State}.
 oncompile(Module) -> gen_server:cast(?MODULE,{oncompile, Module}).
 onload(Module) -> gen_server:cast(?MODULE,{onload, Module}).
 onnew(Module)  -> gen_server:cast(?MODULE,{onnew, Module}).
+static(Module) -> gen_server:cast(?MODULE,{static, Module}).
+lang(Module)   -> gen_server:cast(?MODULE,{lang, Module}).
+routes(Module) -> gen_server:cast(?MODULE,{routes, Module}).
 watch(App)     -> gen_server:cast(?MODULE,{watch, App}).
 unwatch(App)   -> gen_server:cast(?MODULE,{unwatch, App}).
 parents(Module)-> gen_server:call(?MODULE,{parents, Module}).
 deps(Module)   -> gen_server:call(?MODULE,{deps, Module}).
 topsort(App)   -> gen_server:call(?MODULE,{topsort, App}).
 
-onnew(E, State) -> wf:info(?MODULE, "Receive ONNEW event: ~p", [E]),{ok,State}.
+print(L) -> lists:foreach(fun({N,P,H,O})-> 
+              io:format("~p, ~p, ~p, ~p~n",[N,P,H,O])
+            end,L).
+routes([{A,_}], State) -> 
+  App = wf:atom([A]),
+  {ok, _, _, _, DispatchModule, _, Rules} = naga:dispatch_routes(App),
+  wf:info(?MODULE, "ROUTES ~p reloaded"
+                 , [DispatchModule]),
+  print(Rules),
+  {ok,State}.
+static([E], State) -> wf:info(?MODULE, "Receive STATIC event: ~p", [E]),{ok,State}.
+lang([E], State)   -> wf:info(?MODULE, "Receive LANG event: ~p", [E]),{ok,State}.
+onnew(E, State)  -> wf:info(?MODULE, "Receive ONNEW event: ~p", [E]),{ok,State}.
 onload([Module]=E, State)-> 
   wf:info(?MODULE, "Receive ONLOAD event: ~p", [E]),
-  case is_view(Module) of false -> skip; true ->
-      case parents(Module,State) of [] -> skip;
-        Parents -> [compile(P)||P<-Parents] end end, 
-  %%FIXME: for now, delete,rebuild graph each time, small graph, fast enought
-  % [begin {E, V1, V2, Label} = digraph:edge(G,E),{V1,V2} end|| E <- digraph:edges(G,V1)] 
-  App = app(Module),
-  NewState = watch(App,unwatch(App, State)),
-  {ok,NewState}.
+  case is_view(Module) of 
+    false -> {ok,State}; 
+    true -> case parents(Module,State) of 
+              [] -> {ok,State};
+              Parents -> [compile(P)||P<-Parents],
+              %%FIXME: for now, delete,rebuild graph each time, small graph, fast enought
+              % [begin {E, V1, V2, Label} = digraph:edge(G,E),{V1,V2} end|| E <- digraph:edges(G,V1)] 
+              App = app(Module),
+              NewState = watch(App,unwatch(App, State)),
+              {ok,NewState}              
+            end 
+  end.
 
 %FIXME: work 4 linux, macosx ?, window?
 compile(File) -> sh:run(["touch",File]), ok.
@@ -66,8 +92,10 @@ watch([], State) -> State;
 unwatch([A|T], State) -> unwatch(T, unwatch(A,State));
 unwatch([], State) -> State;
 unwatch(App, #state{graphs=Graphs}=State) -> 
-  case maps:get(App, Graphs, undefined) of undefined -> State; 
-       G -> digraph:delete(G), State#state{graphs=maps:remove(App,Graphs)} end.
+  case maps:get(App, Graphs, undefined) of undefined -> skip; 
+    G -> New=maps:remove(App,Graphs),
+         digraph:delete(G), %%check memory
+         State#state{graphs=New} end.
 
 parents(M, #state{graphs=Graphs}=State) ->  
   case is_view(M) of 
