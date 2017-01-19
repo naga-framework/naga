@@ -43,7 +43,7 @@ execute(Req, Env) ->
 			PathInfo = path_info(Pattern,Path0),
 			wf:info(?MODULE,"~p ~p x (~p) -> ~p~n",[Handler,Path0,Pattern,PathInfo]),
 		 	Req2 = cowboy_req:set_bindings(HostInfo, PathInfo, Bindings, Req),
-			{ok, Req2, [{handler, naga_cowboy},{handler_opts, HandlerOpts}|Env]};
+			{ok, Req2, [{handler, Handler},{handler_opts, HandlerOpts}|Env]};
 
 		_ -> {error, 400, Req}
 	end.
