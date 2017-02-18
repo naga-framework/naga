@@ -69,14 +69,15 @@ print(App,Module,L) ->
  io:format(" id | url~s| handler,app/ctrl:action~n",[string:chars(32, Max)]),
  io:format("----|~s|~s~n",[string:chars($-, Max+4), string:chars($-, Max+4)]),
  lists:foreach(
-  fun({N,P,naga_static,O})-> 
+  fun({N,_,_,_}) when N =< 0-> skip;
+     ({N,P,naga_static,O})-> 
        io:format("~3.B | \"~s | naga_static~n",[N,Pad(url(P))]);
      ({N,P,cowboy_static,O})->
        io:format("~3.B | \"~s | cowboy_static~n",[N,Pad(url(P))]);
      ({N,P,H,#route{application=A,controller=C,action=Act}=O})->
        io:format("~3.B | \"~s | ~p/~p:~p~n",[N,Pad(url(P)),A,C,Act]);
      ({N,P,H,O})->
-       io:format("~3.B | \"~s | ~s~n",[N,Pad(url(P)),wf:to_list(O)])                   
+       io:format("~3.B | \"~s | ~s~n",[N,Pad(url(P)),wf:to_list(H)])                   
   end,L),
  io:format("----|~s|~s~n",[string:chars($-, Max+4), string:chars($-, Max+4)]).
 
