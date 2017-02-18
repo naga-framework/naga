@@ -61,7 +61,8 @@ url(['*'|T],Acc) -> url(T,[["[...]"]|Acc]);
 url([H|T],Acc) -> url(T,[[H]|Acc]).
 
 print(App,Module,L) ->
- Max = lists:foldr(fun({N,P,_,O},A) ->max(length(url(P)),A)end,0, L),
+ Max = lists:foldr(fun({N,_,_,_},A) when N =< 0 -> A;
+                      ({N,P,_,O},A) -> max(length(url(P)),A)end,0, L),
  Pad = fun(X) -> S0 = length(X),X ++"\""++ string:chars(32, Max - S0) end,
  io:format("-----~s-~s~n",[string:chars($-, Max+4), string:chars($-, Max+4)]),
  io:format(" DISPATCH for ~p, ~p~n",[App,Module]),
