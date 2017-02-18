@@ -60,12 +60,14 @@ dispatch_routes(App) ->
   Components = [App] ++ Modules,
   case read_dump_file(Components) of
    {error, Raison} = Err -> Err; 
-   [{_,R}] -> 
+   [{_,R0}] ->
+    RC = dispatch_components(App),
+    R = RC ++ R0,  
     {Rules,N} = lists:foldl(fun({A,B,C},{Acc,Count}) ->
                                   {Acc++[{Count,convert(A),B,C}], Count+1};
                                 ({N,A,B,C},{Acc,Count}) ->
                                   {Acc++[{N,convert(A),B,C}], Count}
-                            end,{[],1}, R),
+                            end,{[],1-length(RC)}, R),
     DispatchModule = module_dispatch_name(App),
     ok = dispatch_compiler:compile_load(DispatchModule,Rules),
     {ok, App, Modules, Components, DispatchModule, N, Rules}
@@ -77,13 +79,23 @@ protoOpts(Mode,App) ->
     {ok, App, Modules, Components, DispatchModule, N, Rules} ->
       naga_load:print(App, DispatchModule, Rules),
       _AppsInfo = boot_apps(Components),
+
       %%ets:insert(?MODULE,{{App,rules},{DispatchModule,N,Rules}}),
       %%cowboy_router:compile(DispatchApps)
       [{env,[{application, {App,Modules}} 
-            %,{appsInfo, AppsInfo}                         
+            %,{appsInfo, AppsInfo}                       
              ,{dispatch, DispatchModule}]}
              ,{middlewares, middlewares()}]
   end.
+
+dispatch_components(App) ->
+  Components = wf:config(App,modules,[]),
+  Order = order([App]++Components),
+  [begin BU = wf:config(C,base_url,"/"),
+    case BU of "/" ->
+      {"$$_{Components}_$$"++base_url(C,"/[...]"),{[],C},[]};
+      _ -> {"$$_{Components}_$$"++base_url(C,"/[...]"),{[wf:to_binary(BU--"/")],C},[]}
+    end end || C <- Order].
 
 get_dispatch(App) ->
    D = lists:foldr(fun(Rule,Acc)-> 
@@ -188,6 +200,8 @@ static_dir(App)   -> {ok,[Rules]} = consult(App),
                            H == naga_static orelse H == n2o_static, A == dir ], 
                       Ap == AppName],{Url,filename:join(Dir)}.
 
+tpl_name(App,Ctr,Act,E) -> naga_mvc:tpl_name(App,Ctr,Act,E).
+
 %files(controller,App) -> [{F, module(F)}|| F <- mad_compile:files(ctrl_dir(App),".erl")];
 files(controller,App) -> naga_load:controller_files(App);
 files(view,App)   -> naga_load:view_files(App).
@@ -290,6 +304,7 @@ consult(App)            -> case mad_repl:load_file(route_file(App)) of
 
 routeIndexof(A,O) ->  #route{type=mvc,application=A,controller=naga_indexof,
                         action=index,want_session=true,is_steroid=true,opts=O}.
+
 dispatch_route(App,{Code, Handler, Opts}) 
                    when is_integer(Code) -> [{base_url(App,code_url(Code)), handler(App,Handler), opts(App,Handler,Opts)}];
 dispatch_route(App,{Url, Handler, Opts}) -> O = opts(App,Handler,Opts), 

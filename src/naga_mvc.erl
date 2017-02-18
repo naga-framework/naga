@@ -7,7 +7,7 @@
 -include("naga.hrl").
 -export([run/2,transition/1]).
 -export([i18n_undefined/1]).
--export([index/3,before_filters/2]).
+-export([index/3,before_filters/2,tpl_name/4]).
 
 transition(Actions) -> receive {'INIT',A} -> transition(A); {'N2O',Pid} -> Pid ! {actions,Actions} end.
 run(Req, []) ->
@@ -207,9 +207,9 @@ trans(Vars,Ctx)    -> #{'_application':=A} = Ctx,
 %% theming can be done with an naga app with only views and static assets 
 %% FIXME: maybe base_url, static asset 
 %%        switch default static asset with the one from the theme
-tpl({_,C,Ac,E},#{'_theme':=T})   -> tpl(T,C,Ac,E);                       
-tpl({A,C,Ac,E},_)                -> tpl(A,C,Ac,E).
-tpl(A,C,Ac,E)                    -> wf:to_atom(wf:to_list(A)++
+tpl({_,C,Ac,E},#{'_theme':=T})   -> tpl_name(T,C,Ac,E);                       
+tpl({A,C,Ac,E},_)                -> tpl_name(A,C,Ac,E).
+tpl_name(A,C,Ac,E)               -> wf:to_atom(wf:to_list(A)++
                                     "_view_"++wf:to_list(C)++
                                     "_"++wf:to_list(Ac)++
                                     "_"++wf:to_list(E)).
