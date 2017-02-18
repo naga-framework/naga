@@ -33,11 +33,6 @@ stop(App)  -> case lists:member(App, wf:config(naga,watch,[])) of
                 false -> ok 
               end.
 
-trans(_,X,undefined) -> X;
-trans(A,X,L)         -> case naga_lang:lookup(A,{wf:to_list(L),X}) of
-                          undefined -> {M,F} = wf:config(A,i18n_undefined,{naga_mvc,i18n_undefined}),M:F(X);
-                          E -> E end.
-
 start(App) when is_atom(App) -> start([App]);
 start(Apps) -> [case protoOpts(mode(),App) of
                  {error, Err} -> wf:error(?MODULE,"Cannot Start Listener (~p)"
@@ -54,6 +49,11 @@ convert([],Acc)          -> lists:reverse(Acc);
 convert(["[...]"|T],Acc) -> convert(T,['*']++Acc);
 convert([[$:|T1]|T],Acc) -> convert(T,[wf:atom([T1])]++Acc);
 convert([H|T],Acc)       -> convert(T,[H]++Acc).
+
+trans(_,X,undefined) -> X;
+trans(A,X,L)         -> case naga_lang:lookup(A,{wf:to_list(L),X}) of
+                          undefined -> {M,F} = wf:config(A,i18n_undefined,{naga_mvc,i18n_undefined}),M:F(X);
+                          E -> E end.
 
 dispatch_routes(App) -> 
   Modules = wf:config(App,modules,[]),
@@ -72,12 +72,12 @@ dispatch_routes(App) ->
   end.
 
 protoOpts(Mode,App) ->
-  io:format("MODE PROD ~p~n",[Mode]), 
   case dispatch_routes(App) of
     {error,_} = Err -> Err;
     {ok, App, Modules, Components, DispatchModule, N, Rules} ->
+      naga_load:print(App, DispatchModule, Rules),
       _AppsInfo = boot_apps(Components),
-      ets:insert(?MODULE,{{App,rules},{DispatchModule,N,Rules}}),
+      %%ets:insert(?MODULE,{{App,rules},{DispatchModule,N,Rules}}),
       %%cowboy_router:compile(DispatchApps)
       [{env,[{application, {App,Modules}} 
             %,{appsInfo, AppsInfo}                         
@@ -92,31 +92,18 @@ get_dispatch(App) ->
                end,[], [routes, view, doc, mvc]),
    lists:foldr(fun(Domain,Bcc) -> [{Domain, lists:flatten(D)}] ++ Bcc end, [], domains(App)).
 
-put_dispatch(App,Modules,Rule) ->
-  Rules = dispatch(Rule,order([App]++Modules)),  
-  ets:insert(?MODULE,{{App,Rule},Rules}),
-  Rules.
-
-match(App,Path) ->
-  [{_, Dispatch}]= ets:lookup(?MODULE, {App,dispatch}),
-  naga_router:match(Dispatch, <<>>, Path).
-
-dispatch({dev,Components}) -> 
-      App = hd(Components),
-      Rules = [routes, view, doc, mvc],
-      D = lists:foldr(fun(Rule,Acc)-> 
-                        R = dispatch(Rule,order(Components)),
-                        wf:info(?MODULE,"~p:~p:~p",[App,Rule,R]),
-                        ets:insert(?MODULE,{{App,Rule},R}),
-                        R ++ Acc 
-                      end,[],Rules),
-      lists:foldr(fun(Domain,Bcc) -> [{Domain, lists:flatten(D)}] ++ Bcc end, [], domains(App));
+print_dispatch(App) ->
+  case dispatch_routes(App) of
+    {ok, _, _, _, DispatchModule, _, Rules} -> 
+      naga_load:print(App, DispatchModule, Rules);
+    _ -> skip end.
 
 dispatch(Components) -> 
       App = hd(Components),
       Rules = [routes, view, doc, mvc],
+      Order = order(Components),
       D = lists:foldr(fun(Rule,Acc)-> 
-                        dispatch(Rule,order(Components)) ++ Acc 
+                        dispatch(Rule,Order) ++ Acc 
                       end,[],wf:config(App,rules,Rules)),
       lists:foldr(fun(Domain,Bcc) -> [{Domain, lists:flatten(D)}] ++ Bcc end, [], domains(App)).
 

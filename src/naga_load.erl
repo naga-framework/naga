@@ -8,6 +8,7 @@
 -export([onload/1,onnew/2,topsort/1,watch/1,unwatch/1,static/1,routes/1,lang/1]).
 -export([view_graph/1,app/1,parents/1,deps/1,source/1, source/2, is_view/1,view_files/1, controller_files/1]).
 -record(state,{graphs=#{}}).
+-include("naga.hrl").
 
 start_link() -> start_link([]).
 start_link(A)-> gen_server:start_link({local, ?SERVER}, ?MODULE, A, []).
@@ -51,15 +52,39 @@ parents(Module)-> gen_server:call(?MODULE,{parents, Module}).
 deps(Module)   -> gen_server:call(?MODULE,{deps, Module}).
 topsort(App)   -> gen_server:call(?MODULE,{topsort, App}).
 
-print(L) -> lists:foreach(fun({N,P,H,O})-> 
-              io:format("~p, ~p, ~p, ~p~n",[N,P,H,O])
-            end,L).
+
+url([]) -> "/";
+url(L) -> url(L,[]).
+
+url([],Acc) -> filename:join(lists:reverse(Acc)); 
+url(['*'|T],Acc) -> url(T,[["[...]"]|Acc]);
+url([H|T],Acc) -> url(T,[[H]|Acc]).
+
+print(App,Module,L) ->
+ Max = lists:foldr(fun({N,P,_,O},A) ->max(length(url(P)),A)end,0, L),
+ Pad = fun(X) -> S0 = length(X),X ++"\""++ string:chars(32, Max - S0) end,
+ io:format("-----~s-~s~n",[string:chars($-, Max+4), string:chars($-, Max+4)]),
+ io:format(" DISPATCH for ~p, ~p~n",[App,Module]),
+ io:format("-----~s-~s~n",[string:chars($-, Max+4), string:chars($-, Max+4)]),
+ io:format(" id | url~s| handler,app/ctrl:action~n",[string:chars(32, Max)]),
+ io:format("----|~s|~s~n",[string:chars($-, Max+4), string:chars($-, Max+4)]),
+ lists:foreach(
+  fun({N,P,naga_static,O})-> 
+       io:format("~3.B | \"~s | naga_static~n",[N,Pad(url(P))]);
+     ({N,P,cowboy_static,O})->
+       io:format("~3.B | \"~s | cowboy_static~n",[N,Pad(url(P))]);
+     ({N,P,H,#route{application=A,controller=C,action=Act}=O})->
+       io:format("~3.B | \"~s | ~p/~p:~p~n",[N,Pad(url(P)),A,C,Act]);
+     ({N,P,H,O})->
+       io:format("~3.B | \"~s | ~s~n",[N,Pad(url(P)),wf:to_list(O)])                   
+  end,L),
+ io:format("----|~s|~s~n",[string:chars($-, Max+4), string:chars($-, Max+4)]).
+
 routes([{A,_}], State) -> 
   App = wf:atom([A]),
-  {ok, _, _, _, DispatchModule, _, Rules} = naga:dispatch_routes(App),
-  wf:info(?MODULE, "ROUTES ~p reloaded"
-                 , [DispatchModule]),
-  print(Rules),
+  {ok, _, _, _, DispatchModule, _N, Rules} = naga:dispatch_routes(App),
+  %%FIXME: show diff
+  print(App,DispatchModule, Rules),
   {ok,State}.
 static([E], State) -> wf:info(?MODULE, "Receive STATIC event: ~p", [E]),{ok,State}.
 lang([E], State)   -> wf:info(?MODULE, "Receive LANG event: ~p", [E]),{ok,State}.
