@@ -294,7 +294,6 @@ dispatch_route(App,{Code, Handler, Opts})
                    when is_integer(Code) -> [{base_url(App,code_url(Code)), handler(App,Handler), opts(App,Handler,Opts)}];
 dispatch_route(App,{Url, Handler, Opts}) -> O = opts(App,Handler,Opts), 
                                             %io:format("URL ~p : ~p~n",[Url,O]),
-                                            [{base_url(App,Url), handler(App,Handler), O}] ++ 
                                             case O of #route{is_steroid=true} -> 
                                               BaseUrl = base_url(App,n2o_url(App,Url)),
                                               %io:format("URL WS ~p : ~p~n",[BaseUrl,O]),
@@ -306,7 +305,7 @@ dispatch_route(App,{Url, Handler, Opts}) -> O = opts(App,Handler,Opts),
                                                       [{ BaseUrl, wf:config(naga,stream,n2o_stream), R}];
                                                     _ -> []
                                                    end 
-                                            end;
+                                            end ++ [{base_url(App,Url), handler(App,Handler), O}];
 dispatch_route(App,Route)                -> wf:error(?MODULE, "Invalid route ~p~n",[App,Route]), [].
 
 dispatch_view(App,ViewModule) 
