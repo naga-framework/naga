@@ -7,7 +7,7 @@
 -export([start_link/1,start_link/0]).
 -export([onload/1,onnew/2,topsort/1,watch/1,unwatch/1,static/1,routes/1,lang/1]).
 -export([view_graph/1,app/1,parents/1,deps/1,source/1, source/2, is_view/1,view_files/1, controller_files/1]).
--record(state,{graphs=#{}}).
+-record(state,{graphs=#{},apps=[]}).
 -include("naga.hrl").
 
 start_link() -> start_link([]).
@@ -82,11 +82,20 @@ print(App,Module,L) ->
   end,L),
  io:format("----|~s|~s~n",[string:chars($-, Max+4), string:chars($-, Max+4)]).
 
-routes([{A,_}], State) -> 
+routes([{A,_}], #state{apps=Apps}=State) -> 
   App = wf:atom([A]),
   {ok, _, _, _, DispatchModule, _N, Rules} = naga:dispatch_routes(App),
   %%FIXME: show diff
   print(App,DispatchModule, Rules),
+  Parents = lists:foldl(fun({P,C},Acc) ->
+                          case lists:member(App,C) of
+                            true -> [P|Acc]; false-> Acc end 
+                        end,[],Apps),
+  [begin 
+    R = naga:route_file(P),
+    io:format("=> recompile route file, ~p:~p~n",[P,R]),
+    touch(R) 
+   end || P<- (Parents--[App])],
   {ok,State}.
 static([E], State) -> wf:info(?MODULE, "Receive STATIC event: ~p", [E]),{ok,State}.
 lang([E], State)   -> wf:info(?MODULE, "Receive LANG event: ~p", [E]),{ok,State}.
@@ -97,7 +106,7 @@ onload([Module]=E, State)->
     false -> {ok,State}; 
     true -> case parents(Module,State) of 
               [] -> {ok,State};
-              Parents -> [compile(P)||P<-Parents],
+              Parents -> [touch(P)||P<-Parents],
               %%FIXME: for now, delete,rebuild graph each time, small graph, fast enought
               % [begin {E, V1, V2, Label} = digraph:edge(G,E),{V1,V2} end|| E <- digraph:edges(G,V1)] 
               App = app(Module),
@@ -107,13 +116,21 @@ onload([Module]=E, State)->
   end.
 
 %FIXME: work 4 linux, macosx ?, window?
-compile(File) -> sh:run(["touch",File]), ok.
+touch(File) -> case os:type() of
+                {unix,darwin} -> case file:read_file(File) of
+                                  {ok,Bin} -> file:write_file(File,Bin);
+                                  _ -> sh:run(["touch",File])
+                                 end;
+                _ -> sh:run(["touch",File]), ok end.
 
 watch([A|T], State) -> watch(T, watch(A,State));
 watch([], State) -> State;
  watch(App, #state{graphs=Graphs}=State) -> 
   case maps:get(App, Graphs, undefined) of 
-    undefined -> State#state{graphs = Graphs#{App => view_graph(App)}}; 
+    undefined ->
+      C = wf:config(App,modules,[]),
+      State#state{apps = State#state.apps ++ [{App,C}],
+                  graphs = Graphs#{App => view_graph(App)}}; 
     G -> State end.
 
 unwatch([A|T], State) -> unwatch(T, unwatch(A,State));
