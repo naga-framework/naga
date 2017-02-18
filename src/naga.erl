@@ -54,7 +54,7 @@ trans(_,X,undefined) -> X;
 trans(A,X,L)         -> case naga_lang:lookup(A,{wf:to_list(L),X}) of
                           undefined -> {M,F} = wf:config(A,i18n_undefined,{naga_mvc,i18n_undefined}),M:F(X);
                           E -> E end.
-
+module_dispatch_name(App) -> wf:atom([App,dispatch_routes]).
 dispatch_routes(App) -> 
   Modules = wf:config(App,modules,[]),
   Components = [App] ++ Modules,
@@ -66,7 +66,7 @@ dispatch_routes(App) ->
                                 ({N,A,B,C},{Acc,Count}) ->
                                   {Acc++[{N,convert(A),B,C}], Count}
                             end,{[],1}, R),
-    DispatchModule = wf:atom([App,dispatch_routes]),
+    DispatchModule = module_dispatch_name(App),
     ok = dispatch_compiler:compile_load(DispatchModule,Rules),
     {ok, App, Modules, Components, DispatchModule, N, Rules}
   end.
@@ -97,6 +97,15 @@ print_dispatch(App) ->
     {ok, _, _, _, DispatchModule, _, Rules} -> 
       naga_load:print(App, DispatchModule, Rules);
     _ -> skip end.
+
+match(App,Path) when is_list(Path)-> 
+  Url = lists:map(fun wf:to_binary/1,filename:split(Path)),
+  match1(App, Url).
+
+match1(App,[<<"/">>|Path]) -> match1(App,Path);
+match1(App,Path) ->
+ DispatchModule = module_dispatch_name(App),
+ DispatchModule:match(Path,undefined).
 
 dispatch(Components) -> 
       App = hd(Components),
