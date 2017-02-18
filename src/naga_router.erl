@@ -54,5 +54,6 @@ not_found(DispatchModule, Path) ->
   	{ok,{{_,_,{B,_},_},_}} -> B ++ [<<"$_404_$">>]; fail -> fail end.
 
 path_info([],    P)          -> P;
+path_info(['*'], [])         -> [];
 path_info([_,'*'|_], [_|T2]) -> T2;
 path_info([_|T1],    [_|T2]) -> path_info(T1, T2).
