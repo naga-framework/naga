@@ -26,8 +26,8 @@ stop(App)  -> case lists:member(App, wf:config(naga,watch,[])) of
                          [begin
                             IpType = ip_type(ip(O)),
                             Port = port(O),
-                            Ref = listener_name(X, App,IpType,Port),
-                            wf:info(?MODULE, "stoping ~p:~s", 
+                            Ref = listener_name(X,App,IpType,Port),
+                            error_logger:info_msg("stoping ~p:~s", 
                               [App, begin [P,_] = string:tokens(wf:to_list(Ref),"_"), P end]),
                             cowboy:stop_listener(Ref)
                           end || {X,O} <-Listeners],
@@ -37,7 +37,7 @@ stop(App)  -> case lists:member(App, wf:config(naga,watch,[])) of
 
 start(App) when is_atom(App) -> start([App]);
 start(Apps) -> [case protoOpts(mode(),App) of
-                 {error, Err} -> wf:error(?MODULE,"Cannot Start Listener (~p)"
+                 {error, Err} -> error_logger:error_msg("Cannot Start Listener (~p)"
                                           " for reason: ~p~n",[App,Err]),{App, Err};
                   ProtoOpts -> start_listeners(App, ProtoOpts) end || App <- Apps].
 
@@ -147,8 +147,15 @@ start_listeners(App, ProtoOpts) ->
 ip(O) -> case proplists:get_value(ip, O, {0, 0, 0, 0}) of
           {_,_,_,_} =Ipv4 -> Ipv4;
           {_,_,_,_,_,_,_,_}=Ipv6 -> Ipv6;
-          E when is_list(E) -> {ok,Ip} = inet:parse_address(E),Ip end.
-port(O)-> proplists:get_value(port, O, ?DEFAULT_HTTP_PORT).
+          Val when is_list(Val) -> 
+            case inet:parse_address(Val) of 
+              {ok,Ip} -> Ip; 
+              Err -> Err end end.
+
+port(O) -> case proplists:get_value(port, O, ?DEFAULT_HTTP_PORT) of
+            P when is_integer(P),
+                   P >= 0, P =< 65535 -> P; 
+            _ -> {error, invalid_port} end.
 
 ip_type(ipv4) -> ipv4;
 ip_type(ipv6) -> ipv6;
@@ -157,7 +164,8 @@ ip_type({ok,{_,_,_,_,_,_,_,_}}) -> ipv6;
 ip_type({_,_,_,_}) -> ipv4;
 ip_type({_,_,_,_,_,_,_,_}) -> ipv6;
 ip_type(Ip) when is_list(Ip)-> 
-  ip_type(inet:parse_address(Ip)).
+  ip_type(inet:parse_address(Ip));
+ip_type(_) -> {error,unknow_ip_type}.
 
 ipv4_to_ipv6({A,B,C,D}) -> 
   Ip = wf:to_list("~B.~B.~B.~B",[A,B,C,D]),
@@ -166,14 +174,17 @@ ipv4_to_ipv6({A,B,C,D}) ->
 dft_port(Ip,Dft) -> 
   dft_port(ip_type(Ip),Dft).
 
+abort({error,_}=Err,Fmt) -> io:format(Fmt,[Err]),halt(abort,[]);
+abort(Val,_) -> Val.
+
 listener_name(Type,App) -> wf:atom([Type,App]).
 listener_name(Type,App,Ip,Port) -> wf:atom([Type,App,ip_type(Ip),Port]).
 
 listener(_,[], _,Acc)   -> Acc;
 listener(App, [{Proto, Opts}|T], ProtoOpts, Acc) ->
-    Ip          = ip(Opts),
-    IpType      = ip_type(Ip),
-    Port        = port(Opts),
+    Ip          = abort(ip(Opts),   "Invalid ip format ~p\r\n"), 
+    IpType      = abort(ip_type(Ip),"Invalid ip type ~p\r\n"),
+    Port        = abort(port(Opts), "Invalid port ~p\r\n"),
     Listener    = listener_name(Proto,App,IpType,Port),
     NbAcceptors = proplists:get_value(acceptors, Opts, ?DEFAULT_ACCEPTOR_PROCESSES),
     SslOpts     = case (Proto == https) or (Proto == spdy) of false -> [] ;
@@ -183,10 +194,7 @@ listener(App, [{Proto, Opts}|T], ProtoOpts, Acc) ->
     case cowboy:Start(Listener, NbAcceptors, TransOpts, ProtoOpts) of
         {ok, Pid} -> io:format("~p: Starting ~s server ~p:~p (~p)~n",[App, Proto, Ip, Port, Listener]),
                      listener(App, T, ProtoOpts, [{Listener, Pid, TransOpts, ProtoOpts}|Acc]); 
-        {error,_} = Err -> 
-            io:format("Can't start Web Server: ~p ~p\r\n",[Err, {App, Ip, Port}]);
-        X -> 
-            io:format("Unknown Error: ~p\r\n",[X]), halt(abort,[])
+        {error,_} = Err -> abort(Err,"Can't start Web Server: ~p\r\n")
     end.
 
 module_info(M,T)  -> case catch M:module_info(T) of 
