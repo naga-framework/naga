@@ -56,7 +56,7 @@ topsort(App)   -> gen_server:call(?MODULE,{topsort, App}).
 url([]) -> "/";
 url(L) -> url(L,[]).
 
-url([],Acc) -> filename:join(lists:reverse(Acc)); 
+url([],Acc) -> "/"++filename:join(lists:reverse(Acc)); 
 url(['*'|T],Acc) -> url(T,[["[...]"]|Acc]);
 url([H|T],Acc) -> url(T,[[H]|Acc]).
 
