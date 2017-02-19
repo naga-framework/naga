@@ -58,6 +58,7 @@ url(L) -> url(L,[]).
 
 url([],Acc) -> "/"++filename:join(lists:reverse(Acc)); 
 url(['*'|T],Acc) -> url(T,[["[...]"]|Acc]);
+url([H|T],Acc) when is_atom(H)-> url(T,[[wf:to_list([':',H])]|Acc]);
 url([H|T],Acc) -> url(T,[[H]|Acc]).
 
 print(App,Module,L) ->
