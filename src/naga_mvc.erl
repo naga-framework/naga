@@ -141,7 +141,8 @@ handle(App,Mod,A,M,P,B,O)         -> case apply_before(App,Mod,req_ctx(App,Mod,A
                                       {error,E} -> error(E);
                                       {redirect, R} -> wf:redirect(R) end.
 
-req_ctx(App,Mod,A,M,P,B,O)  -> #{'_application'=> App,
+req_ctx(App,Mod,A,M,P,B,O)  -> %io:format("BASE_URL ~p:~p~n",[App,naga:base_url(App,"")]),
+                               #{'_application'=> App,
                                  '_method'     => M,
                                  '_controller' => Mod,
                                  '_action'     => A,
@@ -149,11 +150,12 @@ req_ctx(App,Mod,A,M,P,B,O)  -> #{'_application'=> App,
                                  '_bindings'   => B,
                                  '_opts'       => O,
                                  script        => case wf:script() of undefined -> <<>>; S -> S end,
-                                 '_base_url'   => case wf:config(App,base_url,"") of "/" -> ""; E -> E end
+                                 '_base_url'   => 
+                                  case wf:config(App,base_url,"") of "/" -> ""; E -> E end
                                 }.
 
 apply_before(App,Ctr,Ctx) -> O = wf:config(App,controller_filters_config,[]), %%FIXME: filter config
-                             G = wf:config(App,controller_filters,[]),                      
+                             G = wf:config(App,controller_filters,[]),                     
                              Filters0 = case erlang:function_exported(Ctr,before_filters,2) of 
                                             true -> Ctr:before_filters(G,Ctx); _ -> G end,
                              {Filters,_} = lists:partition(fun(X) ->
@@ -181,8 +183,20 @@ apply_middle(A,C,Vars,Ctx) -> O = wf:config(A,controller_filters_config,[]),
                                               F:middle_filter(Result,FC,Ctx)
                                           end, Vars, Filters).
 
-%%todo: after filter?
-%%todo: 
+apply_after(Io,Ctx) ->  #{'_application':=A, '_controller':=C} = Ctx,
+                        O = wf:config(A,controller_filters_config,[]),
+                        G = wf:config(A,controller_filters,[]),
+                        Filters0 = case erlang:function_exported(C,after_filters,3) of
+                                   true -> C:middle_filters(G,Ctx); _ -> G end,
+                        {Filters,_} = lists:partition(fun(X) ->
+                                                      erlang:function_exported(X,after_filter,3)
+                                                     end, Filters0 ++ [C]),
+                        io:format("AFTER FILTERS ~p:~p~n",[C,Filters]), 
+                        lists:foldl(fun(F,Rendered) when is_atom(F) -> 
+                                        FC = proplists:get_value(F,O,[]),
+                                        F:after_filter(Rendered,FC,Ctx)
+                                    end, Io, Filters).
+ 
 %%todo: not_found
 %%todo: {stream, Generator::function(), Acc0}
 %%todo: dev mode, header([{<<"Cache-Control">>, <<"no-cache">>}])
@@ -229,14 +243,17 @@ render({{ok,V},Ctx})             -> render({{ok,V,[]},Ctx});
 render({{ok,V,H},Ctx})           -> header(H),
                                     #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
                                     Tpl = tpl({App,C,A,"html"},Ctx),
-                                    {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),Io;
+                                    %io:format("CTX ~p~n",[maps:to_list(Ctx)]),
+                                    {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),
+                                    apply_after(Io,Ctx);
 render({{redirect,L},Ctx})       -> render({{redirect,L,[]},Ctx});
 render({{redirect,L,H},Ctx})     -> header(H++[{<<"Location">>,naga:location(L,Ctx)}]),
-                                    wf:state(status,302),[];
+                                    wf:state(status,302),
+                                    apply_after([],Ctx);
 render({{moved,L},Ctx})          -> render({{moved,L,[]},Ctx});
 render({{moved,L,H},Ctx})        -> header(H++[{<<"Location">>,naga:location(L,Ctx)}]),
-                                    wf:state(status,301),[];
-
+                                    wf:state(status,301),
+                                    apply_after([],Ctx);
 %% jsond, json render with DTL
 render({{jsond,V},Ctx})          -> render({{jsond,V,[]},Ctx});
 render({{jsond,V,H},Ctx})        -> render({{jsond,V,H,200},Ctx});
@@ -244,15 +261,18 @@ render({{jsond,V,H,S},Ctx})      -> header(H++?CTYPE_JSON),
                                     wf:state(status,S),
                                     #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
                                     Tpl = tpl({App,C,A,"json"},Ctx),
-                                    {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),Io;                                    
+                                    {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),
+                                    apply_after(Io,Ctx);                                    
 render({{json,V},Ctx})           -> render({{json,V,[]},Ctx});
 render({{json,V,H},Ctx})         -> render({{json,V,H,200},Ctx});
-render({{json,V,H,S},_})         -> header(H++?CTYPE_JSON),
+render({{json,V,H,S},Ctx})       -> header(H++?CTYPE_JSON),
                                     wf:state(status,S),
-                                    wf:json(V);
+                                    Io = wf:json(V),
+                                    apply_after(Io,Ctx);
 render({{jsonp,C,V},Ctx})        -> render({{jsonp,C,V,[]},Ctx});
-render({{jsonp,C,V,H},_})        -> header(H++?CTYPE_JSON),
-                                    [wf:to_binary(C),<<"(">>,wf:json(V),<<");">>];
+render({{jsonp,C,V,H},Ctx})      -> header(H++?CTYPE_JSON),
+                                    Io = [wf:to_binary(C),<<"(">>,wf:json(V),<<");">>],
+                                    apply_after(Io,Ctx); 
 render({{action_other,L},Ctx})   
                   when is_map(L) -> P = maps:get(params,L,[]),
                                     {App1,C1,A1} = case [L,Ctx] of
@@ -273,19 +293,23 @@ render({{render_other,L,V},Ctx})
                                                    end,
                                     Ext = maps:get('_ext',L,"html"),
                                     Tpl = tpl({App1,C1,A1,Ext},Ctx),
-                                    {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),Io;
+                                    {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),
+                                    apply_after(Io,Ctx); 
 
 render({{yaml,V},Ctx})           -> render({{yaml,V,[]},Ctx});
 render({{yaml,V,H},Ctx})         -> header(H++?CTYPE_YAML),
                                     #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
                                     Tpl = tpl({App,C,A,"yaml"},Ctx),
-                                    {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),Io;  
+                                    {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),
+                                    apply_after(Io,Ctx);   
 render({{js,V},Ctx})             -> render({{js,V,[]},Ctx});
 render({{js,V,H},Ctx})           -> header(H++?CTYPE_JS),
                                     #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
                                     Tpl = tpl({App,C,A,"js"},Ctx),
-                                    {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),Io;  
+                                    {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),
+                                    apply_after(Io,Ctx); 
 
-render({#dtl{}=E,_})             -> wf_render:render(E);                                    
+render({#dtl{}=E,Ctx})           -> Io = wf_render:render(E),
+                                    apply_after(Io,Ctx);
 render(E)                        -> wf_render:render(E).
 
