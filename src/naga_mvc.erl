@@ -51,12 +51,14 @@ run(Req, #route{type=mvc,is_steroid=true}=Route) ->
                             post_params(Route,M),
                             try handle(App,Module,Act,M,P,B,Opts) catch C:E -> wf:error_page(C,E) end
                end,
-    Html    = render(Elements),   
-    Actions = wf:actions(),
-    Pid ! {'INIT',Actions},
-    Ctx2 = finish(Ctx,?CTX, false, WantSession),
-    Req2 = wf:response(Html,set_cookies(wf:cookies(),Ctx2#cx.req)),
-    {ok, _ReqFinal} = wf:reply(wf:state(status), Req2);
+    case render(Elements) of
+     {stream,Gen,Acc} -> streamer({stream,Gen,Acc},Req,Route);
+     Html -> 
+      Actions = wf:actions(),
+      Pid ! {'INIT',Actions},
+      Ctx2 = finish(Ctx,?CTX, false, WantSession),
+      Req2 = wf:response(Html,set_cookies(wf:cookies(),Ctx2#cx.req)),
+      {ok, _ReqFinal} = wf:reply(wf:state(status), Req2) end;
 
 run(Req, #route{type=mvc,is_steroid=false}=Route) ->
     #route{application=App,controller=C,action=Act,arity=A,want_session=WantSession,opts=Opts} = Route,
@@ -73,11 +75,13 @@ run(Req, #route{type=mvc,is_steroid=false}=Route) ->
                            post_params(Route,M),
                            try handle(App,C,Act,M,P,B,Opts) catch C:E -> wf:error_page(C,E) end
                end,    
-    Html = render(Elements),
-    Ctx2 = finish(Ctx,?CTX, false, WantSession),
-    set_sid(WantSession),
-    Req2 = wf:response(Html,set_cookies(wf:cookies(),Ctx2#cx.req)),
-    {ok, _ReqFinal} = wf:reply(wf:state(status), Req2);
+    case render(Elements) of
+     {stream,Gen,Acc} -> streamer({stream,Gen,Acc},Req,Route);
+     Html ->
+      Ctx2 = finish(Ctx,?CTX, false, WantSession),
+      set_sid(WantSession),
+      Req2 = wf:response(Html,set_cookies(wf:cookies(),Ctx2#cx.req)),
+      {ok, _ReqFinal} = wf:reply(wf:state(status), Req2) end;
 
 run(Req, #route{type=view,application=App,view=Module}=R) ->
     wf:state(status,200),
@@ -141,18 +145,16 @@ handle(App,Mod,A,M,P,B,O)         -> case apply_before(App,Mod,req_ctx(App,Mod,A
                                       {error,E} -> error(E);
                                       {redirect, R} -> wf:redirect(R) end.
 
-req_ctx(App,Mod,A,M,P,B,O)  -> %io:format("BASE_URL ~p:~p~n",[App,naga:base_url(App,"")]),
-                               #{'_application'=> App,
-                                 '_method'     => M,
-                                 '_controller' => Mod,
-                                 '_action'     => A,
-                                 '_params'     => P,                             
-                                 '_bindings'   => B,
-                                 '_opts'       => O,
-                                 script        => case wf:script() of undefined -> <<>>; S -> S end,
-                                 '_base_url'   => 
-                                  case wf:config(App,base_url,"") of "/" -> ""; E -> E end
-                                }.
+req_ctx(App,Mod,A,M,P,B,O)-> #{'_application'=> App,
+                               '_method'     => M,
+                               '_controller' => Mod,
+                               '_action'     => A,
+                               '_params'     => P,                             
+                               '_bindings'   => B,
+                               '_opts'       => O,
+                               script        => case wf:script() of undefined -> <<>>; S -> S end,
+                               '_base_url'   => case wf:config(App,base_url,"") of "/" -> ""; E -> E end
+                              }.
 
 apply_before(App,Ctr,Ctx) -> O = wf:config(App,controller_filters_config,[]), %%FIXME: filter config
                              G = wf:config(App,controller_filters,[]),                     
@@ -191,18 +193,33 @@ apply_after(Io,Ctx) ->  #{'_application':=A, '_controller':=C} = Ctx,
                         {Filters,_} = lists:partition(fun(X) ->
                                                       erlang:function_exported(X,after_filter,3)
                                                      end, Filters0 ++ [C]),
-                        io:format("AFTER FILTERS ~p:~p~n",[C,Filters]), 
+                        %io:format("AFTER FILTERS ~p:~p~n",[C,Filters]), 
                         lists:foldl(fun(F,Rendered) when is_atom(F) -> 
                                         FC = proplists:get_value(F,O,[]),
                                         F:after_filter(Rendered,FC,Ctx)
                                     end, Io, Filters).
  
 %%todo: not_found
-%%todo: {stream, Generator::function(), Acc0}
 %%todo: dev mode, header([{<<"Cache-Control">>, <<"no-cache">>}])
 %%      reload current page ? if modfied (css/js/controller)
 %%todo: unit test, mad_eunit ? 
 %%todo check bullet?
+
+streamer({stream,Generator,Acc},Req,State) ->
+  {{stream,fun(S,T)->generator(S,T,Generator,Acc)end}, Req, State}.
+
+generator(Socket,Transport,Generator,Acc0) ->
+  case Generator(Acc0) of
+    {output, Data, Acc1} ->
+      case iolist_size(Data) of
+        0 -> ok;
+        S -> Chunk = [io_lib:format("~.16b\r\n", [S]), Data, <<"\r\n">>],
+             io:format("Stream Chunk ~p~n",[Chunk]),
+             ok = Transport:send(Socket,Chunk)
+      end,
+      generator(Socket,Transport,Generator,Acc1);
+    done -> ok = Transport:send(Socket,["0\r\n\r\n"])
+  end.
 
 i18n_undefined(X)  -> X. %% you can define a callback when the translation is undefined, here is default 
 trans(Vars,Ctx)    -> #{'_application':=A} = Ctx,
@@ -308,8 +325,7 @@ render({{js,V,H},Ctx})           -> header(H++?CTYPE_JS),
                                     Tpl = tpl({App,C,A,"js"},Ctx),
                                     {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),
                                     apply_after(Io,Ctx); 
-
+render({{stream,Gen,Acc},_})     -> {stream,Gen,Acc};
 render({#dtl{}=E,Ctx})           -> Io = wf_render:render(E),
                                     apply_after(Io,Ctx);
 render(E)                        -> wf_render:render(E).
-
