@@ -206,19 +206,16 @@ apply_after(Io,Ctx) ->  #{'_application':=A, '_controller':=C} = Ctx,
 %%todo check bullet?
 
 streamer({stream,Generator,Acc},Req,State) ->
-  {{stream,fun(S,T)->generator(S,T,Generator,Acc)end}, Req, State}.
+   {ok, Req2} = cowboy_req:chunked_reply(200, Req),
+   generator(Generator,Acc,Req2),
+   {ok, Req2}.
 
-generator(Socket,Transport,Generator,Acc0) ->
+generator(Generator,Acc0,Req) ->
   case Generator(Acc0) of
-    {output, Data, Acc1} ->
-      case iolist_size(Data) of
-        0 -> ok;
-        S -> Chunk = [io_lib:format("~.16b\r\n", [S]), Data, <<"\r\n">>],
-             io:format("Stream Chunk ~p~n",[Chunk]),
-             ok = Transport:send(Socket,Chunk)
-      end,
-      generator(Socket,Transport,Generator,Acc1);
-    done -> ok = Transport:send(Socket,["0\r\n\r\n"])
+    {output, Chunk, Acc1} ->
+      ok = cowboy_req:chunk([Chunk,<<"\r\n">>], Req),
+      generator(Generator,Acc1,Req);
+    done -> ok
   end.
 
 i18n_undefined(X)  -> X. %% you can define a callback when the translation is undefined, here is default 
