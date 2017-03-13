@@ -12,16 +12,18 @@ Naga provides the best of both framework - [ChicagoBoss](http://chicagoboss.org)
 
 ### Why an other web-framework
 
-i love ChicagoBoss, i first started learning erlang by digging into it. by doing so, i started to contribute to it as i get more confidente with my erlang knowledge an the internal of CB.
+i love [ChicagoBoss](http://chicagoboss.org), i first started learning erlang by digging into it. i started to contribute to it as i get more confidente with my erlang knowledge an the internal of CB.
 
 i introduced a way to use websocket in ChicagoBoss. at that time it was good enought, but something was missing. i worked on [wamp](https://github.com/mihawk/wamp) to provide [wamp](http://wamp-proto.org/) WebSocket subprotocol.
 
 few time later, i came accross n2o websocket server, claim that CB was slow. i checked myself and it was true :(, i tryed to solve different bottleneck in CB and to merge with n2o project.
 finaly gave up because it reclaim to much change on CB code source.
 
-late last year, i decided to build the way around, build on top of n2o project and get some properties of CB i found usefull.
-the naga-project started. i try to keep it small as possible, less dependency, split it into different component mail,translation,fcgi. it was much easier, i end up with less code, which is great for maintening a project.
+late last year, i decided to build the way around, build on top of (n2o)[http://github.com/synrc/n2o] project and get some properties of CB i found usefull.
+the naga-project started. i try to keep it small as possible, less dependency, split it into different component [mail](https://github.com/naga-framework/naga_mail),[translation](https://github.com/naga-framework/naga_lang),[fcgi](https://github.com/naga-framework/naga_fcgi). 
 
+naga should perform as well as n2o websocket-server.
+check [loadtest](https://github.com/naga-framework/loadtest)
 
 Features
 --------
@@ -37,6 +39,7 @@ Features
 * Small codebase
 * Modulare components: [lang](https://github.com/naga-framework/naga_lang), [mail](https://github.com/naga-framework/naga_mail), [fcgi](https://github.com/naga-framework/naga_fcgi)
 * Easy extensible (you can use any cowboy handler you wrote)
+* Free to use any database layer you like.
 
 Exemples
 --------
