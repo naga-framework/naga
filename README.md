@@ -12,14 +12,14 @@ Naga provides the best of both framework - [ChicagoBoss](http://chicagoboss.org)
 
 ### Why an other web-framework
 
-i love [ChicagoBoss](http://chicagoboss.org), i first started learning erlang by digging into it. i started to contribute to it as i get more confidente with my erlang knowledge an the internal of CB.
+i love [ChicagoBoss](http://chicagoboss.org), i first started learning erlang by digging into it. i started to contribute to it as i get more confidente with my erlang knowledge and the internal of CB.
 
 i introduced a way to use websocket in ChicagoBoss. at that time it was good enought, but something was missing. i worked on [wamp](https://github.com/mihawk/wamp) to provide [wamp](http://wamp-proto.org/) WebSocket subprotocol.
 
 few time later, i came accross n2o websocket server, claim that CB was slow. i checked myself and it was true :(, i tryed to solve different bottleneck in CB and to merge with n2o project.
 finaly gave up because it reclaim to much change on CB code source.
 
-late last year, i decided to build the way around, build on top of (n2o)[http://github.com/synrc/n2o] project and get some properties of CB i found usefull.
+late last year, i decided to build the way around, build on top of [n2o](http://github.com/synrc/n2o) project and get some properties of CB i found usefull.
 the naga-project started. i try to keep it small as possible, less dependency, split it into different component [mail](https://github.com/naga-framework/naga_mail),[translation](https://github.com/naga-framework/naga_lang),[fcgi](https://github.com/naga-framework/naga_fcgi). 
 
 naga should perform as well as n2o websocket-server.
@@ -40,6 +40,7 @@ Features
 * Modulare components: [lang](https://github.com/naga-framework/naga_lang), [mail](https://github.com/naga-framework/naga_mail), [fcgi](https://github.com/naga-framework/naga_fcgi)
 * Easy extensible (you can use any cowboy handler you wrote)
 * Free to use any database layer you like.
+* Gzip compressed asset from HD or memory. (naga_static)
 
 Exemples
 --------
@@ -146,3 +147,12 @@ OK
 >cd hello
 >mad clean deps comp plan repl -name hello@127.0.0.1
 ```
+
+# Donation
+
+if you like the project and want to support it. 
+you can make a donation using [dash](http://dash.org) cryptocurrency at:
+
+- dash: Xh7Sm2hsVXRtpJrfDRezELYLRc69Qq5QBJ
+
+
