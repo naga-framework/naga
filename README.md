@@ -62,12 +62,12 @@ Naga:
 
 ```erlang
  index(<<"POST">>, [], Ctx) ->
-    # do something...
+    % do something...
  index(<<"GET">>,  [], Ctx) ->
-    # do something...
+    % do something...
  
  event(Event) ->
-    # do something
+    % do something
 ```
 
 Demo
