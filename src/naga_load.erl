@@ -26,6 +26,7 @@ init(Apps)   -> wf:info(?MODULE,"Starting naga load. watch ~p",[Apps]),
 handle_call({parents, Module}, _From, State) -> {reply, parents(Module,State), State};
 handle_call({deps, Module}, _From, State)    -> {reply, deps(Module,State), State};
 handle_call({topsort, App}, _From, State)    -> {reply, topsort(App,State), State};
+handle_call({digraph, App}, _From, State)    -> {reply, maps:get(App,State#state.graphs, undefined), State};
 handle_call(_Request, _From, State)          -> {reply, ok, State}.
 handle_cast({watch, App}, State)             -> {noreply, watch(App,State)};
 handle_cast({unwatch, App}, State)           -> {noreply, unwatch(App,State)};
@@ -51,6 +52,7 @@ unwatch(App)   -> gen_server:cast(?MODULE,{unwatch, App}).
 parents(Module)-> gen_server:call(?MODULE,{parents, Module}).
 deps(Module)   -> gen_server:call(?MODULE,{deps, Module}).
 topsort(App)   -> gen_server:call(?MODULE,{topsort, App}).
+digraph(App)   -> gen_server:call(?MODULE,{digraph, App}).
 
 
 url([]) -> "/";
@@ -105,9 +107,14 @@ onload([Module]=E, State)->
   wf:info(?MODULE, "Receive ONLOAD event: ~p", [E]),
   case is_view(Module) of 
     false -> {ok,State}; 
-    true -> case parents(Module,State) of 
-              [] -> {ok,State};
-              Parents -> [touch(P)||P<-Parents],
+    true -> case deps(Module,State) of
+              {error,graph_notfound} -> 
+                io:format("Graph not found for app ~p~n",[app(Module)]),
+                io:format("Use naga:watch(~p).~n",[app(Module)]),
+                {ok,State};
+              not_a_view -> {ok,State};
+              Deps ->
+                [touch(P)||P<-Deps],
               %%FIXME: for now, delete,rebuild graph each time, small graph, fast enought
               % [begin {E, V1, V2, Label} = digraph:edge(G,E),{V1,V2} end|| E <- digraph:edges(G,V1)] 
               App = app(Module),
@@ -163,8 +170,12 @@ view_graph(App) ->
     {ok, Cwd} = file:get_cwd(),    
     G = digraph:new(),
     [ digraph:add_vertex(G, N) || {N,_} <- Nodes ],
-    case all_edges(App, Nodes, Cwd) of 
-        [] -> [];Edges -> [digraph:add_edge(G, A, B) || {A, B} <- Edges], {App, G} end,
+    case all_edges(App, Nodes) of 
+        [] -> [];
+        Edges -> 
+          [ begin 
+             E = (B--Cwd) -- "/",
+             digraph:add_edge(G, E, A) end || {A, B} <- Edges] end, 
     G.
 
 all_edges(App, Nodes)      -> all_edges(App, Nodes, []).
@@ -172,13 +183,15 @@ all_edges(_, [], Acc)      -> lists:flatten(Acc);
 all_edges(App, [H|T], Acc) -> all_edges(App, T, [edge(App, H)|Acc]). 
 
 edge(App, {File,Module}) ->
-   case  Module:dependencies() of [] -> []; Deps ->[{File, X}||{X,_} <- Deps] end.
+   case  Module:dependencies() of 
+    [] -> []; Deps ->[{File, X}||{X,_} <- Deps] end.
   
 view_files(App) ->
-  case application:get_key(App,modules) of
-    undefined -> wf:error(?MODULE, "App (~p) is not started.",[App]),[];
-    {ok , Modules} -> [code:ensure_loaded(M)||M<-Modules],
-                      [{source(M),M}||M <- Modules, is_view(M)] end.
+  Bin = filename:join([code:lib_dir(App),"ebin"]),
+  BeamFiles = filelib:wildcard("*.beam", Bin),
+  Modules = [list_to_atom(filename:basename(X, ".beam")) || X <- BeamFiles],
+  [code:ensure_loaded(M)||M<-Modules],
+  [{source(M),M}||M <- Modules, is_view(M)].
 
 controller_files(App) ->
   {ok, Modules} = application:get_key(App,modules),
@@ -205,6 +218,9 @@ is_controller(App, []) -> false;
 is_controller(App, [H,"apps",App,"src","controller"|_]) -> true;
 is_controller(App, [H|T])  ->  is_controller(App,T).
 
-app(M) -> [_, "ebin", App |_] = lists:reverse(filename:split(code:which(M))), 
-          list_to_atom(App).
+app(M) -> Path = proplists:get_value(source,M:module_info(compile)),
+          {ok, Cwd} = file:get_cwd(),          
+          [_,App|_] = filename:split(Path) -- filename:split(Cwd),
+          wf:to_atom(App).
+        
 
