@@ -192,13 +192,28 @@ listener(App, [{Proto, Opts}|T], ProtoOpts, Acc) ->
     TransOpts   = [{ip, Ip},{port, Port}|SslOpts],
     Start       = wf:atom([start,Proto]),
     case cowboy:Start(Listener, NbAcceptors, TransOpts, ProtoOpts) of
-        {ok, Pid} -> io:format("~p: Starting ~s server ~p:~p (~p)~n",[App, Proto, Ip, Port, Listener]),
+        {ok, Pid} -> io:format(green("~p: Starting ~s server ~p:~p (~p)~n"),[App, Proto, Ip, Port, Listener]),
                      listener(App, T, ProtoOpts, [{Listener, Pid, TransOpts, ProtoOpts}|Acc]); 
         {error,_} = Err -> abort(Err,"Can't start Web Server: ~p\r\n")
     end.
 
+red(S)         -> lists:concat(["\e[31m",S,"\e[0m"]).
+green(S)       -> lists:concat(["\e[32m",S,"\e[0m"]).
+yellow(S)      -> lists:concat(["\e[33m",S,"\e[0m"]).
+blue(S)        -> lists:concat(["\e[34m",S,"\e[0m"]).
+magenta(S)     -> lists:concat(["\e[35m",S,"\e[0m"]).
+light_green(S) -> lists:concat(["\e[92m",S,"\e[0m"]).
+light_yellow(S)-> lists:concat(["\e[93m",S,"\e[0m"]).
+light_blue(S)  -> lists:concat(["\e[94m",S,"\e[0m"]).
+light_gray(S)  -> lists:concat(["\e[97m",S,"\e[0m"]).
+default(S)     -> lists:concat(["\e[39m",S,"\e[0m"]).
+blink(S)       -> lists:concat(["\e[5m",S,"\e[25m"]).
+inverted(S)    -> lists:concat(["\e[7m",S,"\e[27m"]).
+err({undef,[{Ctrl,_,_,_}|_]}) -> 
+  mad:info("~s~n",[red("controller missing => ")++magenta(wf:to_list(Ctrl))]).
+
 module_info(M,T)  -> case catch M:module_info(T) of 
-                      {'EXIT', Err} -> io:format("Error ~p~n",[Err]),[]; E -> E end.
+                      {'EXIT', Err} -> err(Err),[]; E -> E end.
 
 sep()             -> "/". %%FIXME: linux/unix/macosx ok, windows?
 apps()            -> wf:config(naga,watch,[]).

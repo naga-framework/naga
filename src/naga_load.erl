@@ -63,27 +63,32 @@ url(['*'|T],Acc) -> url(T,[["[...]"]|Acc]);
 url([H|T],Acc) when is_atom(H)-> url(T,[[wf:to_list([':',H])]|Acc]);
 url([H|T],Acc) -> url(T,[[H]|Acc]).
 
+format(Fmt,P) -> io:format(naga:yellow(Fmt),P).
+format(N,Fmt,P) -> case N rem 2 of
+                      0 -> io:format(naga:yellow(Fmt),P);
+                      1 -> io:format(naga:light_yellow(Fmt),P) end.
+
 print(App,Module,L) ->
  Max = lists:foldr(fun({N,_,_,_},A) when N =< 0 -> A;
                       ({N,P,_,O},A) -> max(length(url(P)),A)end,0, L),
  Pad = fun(X) -> S0 = length(X),X ++"\""++ string:chars(32, Max - S0) end,
- io:format("-----~s-~s~n",[string:chars($-, Max+4), string:chars($-, Max+4)]),
- io:format(" DISPATCH for ~p, ~p~n",[App,Module]),
- io:format("-----~s-~s~n",[string:chars($-, Max+4), string:chars($-, Max+4)]),
- io:format(" id | url~s| handler,app/ctrl:action~n",[string:chars(32, Max)]),
- io:format("----|~s|~s~n",[string:chars($-, Max+4), string:chars($-, Max+4)]),
+ format("-----~s-~s~n",[string:chars($-, Max+4), string:chars($-, Max+4)]),
+ format(" DISPATCH for ~p, ~p~n",[App,Module]),
+ format("-----~s-~s~n",[string:chars($-, Max+4), string:chars($-, Max+4)]),
+ format(" id | url~s| handler,app/ctrl:action~n",[string:chars(32, Max)]),
+ format("----|~s|~s~n",[string:chars($-, Max+4), string:chars($-, Max+4)]),
  lists:foreach(
   fun({N,_,_,_}) when N =< 0-> skip;
      ({N,P,naga_static,O})-> 
-       io:format("~3.B | \"~s | naga_static~n",[N,Pad(url(P))]);
+       format(N,"~3.B | \"~s | naga_static~n",[N,Pad(url(P))]);
      ({N,P,cowboy_static,O})->
-       io:format("~3.B | \"~s | cowboy_static~n",[N,Pad(url(P))]);
+       format(N,"~3.B | \"~s | cowboy_static~n",[N,Pad(url(P))]);
      ({N,P,H,#route{application=A,controller=C,action=Act}=O})->
-       io:format("~3.B | \"~s | ~p/~p:~p~n",[N,Pad(url(P)),A,C,Act]);
+       format(N,"~3.B | \"~s | ~p/~p:~p~n",[N,Pad(url(P)),A,C,Act]);
      ({N,P,H,O})->
-       io:format("~3.B | \"~s | ~s~n",[N,Pad(url(P)),wf:to_list(H)])                   
+       format(N,"~3.B | \"~s | ~s~n",[N,Pad(url(P)),wf:to_list(H)])                   
   end,L),
- io:format("----|~s|~s~n",[string:chars($-, Max+4), string:chars($-, Max+4)]).
+ format("----|~s|~s~n",[string:chars($-, Max+4), string:chars($-, Max+4)]).
 
 routes([{A,_}], #state{apps=Apps}=State) -> 
   App = wf:atom([A]),
