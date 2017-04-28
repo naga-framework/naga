@@ -363,12 +363,12 @@ dispatch_route(App,{Code, Handler, Opts})
 dispatch_route(App,{Url, Handler, Opts}) -> O = opts(App,Handler,Opts), 
                                             %io:format("URL ~p : ~p~n",[Url,O]),
                                             case O of #route{is_steroid=true} -> 
-                                              BaseUrl = base_url(App,n2o_url(App,Url)),
+                                              BaseUrl = n2o_url(App,base_url(App,Url)),
                                               %io:format("URL WS ~p : ~p~n",[BaseUrl,O]),
                                               [{ BaseUrl, wf:config(naga,stream,n2o_stream), O}];
                                               _ -> case Handler of
                                                     naga_indexof ->  
-                                                      BaseUrl = base_url(App,n2o_url(App,Url)),
+                                                      BaseUrl = n2o_url(App,base_url(App,Url)),
                                                       R = routeIndexof(App,Opts),
                                                       [{ BaseUrl, wf:config(naga,stream,n2o_stream), R}];
                                                     _ -> []
