@@ -202,6 +202,7 @@ sub(A,M)
 sub(A,M)          -> case lists:prefix(A,M) of true -> M -- A; _ -> re:replace(M, "_", "/", [global, {return, list}]) end.
 url(App,M,{dft,A})-> base_url(App,string:join(["/",sub(App,M),"/[...]"],""));
 url(App,M,A)      -> base_url(App,string:join(["/",sub(App,M),"/",wf:to_list(A),"/[...]"],"")).
+url({theme,A},M)  -> sep()++wf:to_list(A)++url(A,M); 
 url(App,M)        -> case string:tokens(wf:to_list(M), "_") of
                      [_,"mail","view",Name,Ext|_] -> base_url(App,"/"++Name++"."++Ext);
                      _ -> {ok,Cwd} = file:get_cwd(), 
@@ -273,7 +274,7 @@ dispatch_view(App,ViewModule)
             when is_atom(ViewModule)     -> [{url(App,ViewModule), 
                                               wf:config(naga,bridge,naga_cowboy), 
                                               #route{type        = view,
-                                                     application = App,
+                                                     application = case App of {theme,A} -> A;_->App end,
                                                      view        = ViewModule,
                                                      action      = render,
                                                      arity       = 0,
@@ -313,12 +314,17 @@ dispatch(routes,Components)-> Themes = [T||T<-[wf:config(App,theme,[])||App<-Com
                                    end| Acc] 
                                  end, [], Themes ++ Components );
 
-dispatch(view, Components) -> lists:foldr(fun(App,Bcc)->
-                                            Views = files(view, App),                             
-                                            [lists:foldr(fun({_,M},Acc) -> 
-                                                          dispatch_view(App,M) ++ Acc
-                                                         end, [], Views)|Bcc]
-                                          end,[],Components);
+dispatch(view, Components) -> Themes = [{theme,T}||T<-[wf:config(App,theme,[])||App<-Components],T/=[]],
+                              L=lists:foldr(fun(App,Bcc)->
+                                              Views = case App of 
+                                                       {theme,A} -> files(view, A);
+                                                       App -> files(view, App)
+                                                      end,                            
+                                              [lists:foldr(fun({_,M},Acc) -> 
+                                                            dispatch_view(App,M) ++ Acc
+                                                           end, [], Views)|Bcc]
+                                          end,[],Components++Themes),                              
+                              io:format("DISPATCH VIEW ~p~n",[L]),L;
 
 dispatch(doc, Components)  -> lists:foldr(fun(App,Acc)->
                                            dispatch_doc(App) ++ Acc

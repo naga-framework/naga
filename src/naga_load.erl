@@ -87,6 +87,8 @@ print(App,Module,L) ->
        format(N,"~3.B | \"~s | naga_static ~p~n",[N,Pad(url(P)),path(O)]);
      ({N,P,cowboy_static,O})->
        format(N,"~3.B | \"~s | cowboy_static ~p~n",[N,Pad(url(P)),path(O)]);
+     ({N,P,H,#route{application=A,type=view}=O})->
+       format(N,"~3.B | \"~s | ~p view ~n",[N,Pad(url(P)),A]);
      ({N,P,H,#route{application=A,controller=C,action=Act}=O})->
        format(N,"~3.B | \"~s | ~p/~p:~p~n",[N,Pad(url(P)),A,C,Act]);
      ({N,P,H,O})->

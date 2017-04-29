@@ -85,16 +85,8 @@ run(Req, #route{type=mvc,is_steroid=false}=Route) ->
 
 run(Req, #route{type=view,application=App,view=Module}=R) ->
     wf:state(status,200),
-    Ctx0 = wf:init_context(Req),
-    Ctx  = Ctx0#cx{module=?MODULE},
-    Ctx1 = init(Ctx, false, false),
-    wf:context(Ctx1),
-    {ok, Cx} = apply_before(App,?MODULE,req_ctx(App,?MODULE,index,[],[],[],[])), 
-    Html = case maps:get('_theme',Cx,undefined) of
-            undefined -> {ok,H} = Module:render(),H;
-            Theme -> Tokens = string:tokens(wf:to_list(Module),"_"), 
-                     View = wf:atom([wf:to_list(Theme)]++tl(Tokens)),
-                     {ok,H} = View:render(),H end,    
+    Vars = case catch App:dummy() of {'EXIT',_} -> []; E -> E end,
+    {ok,Html} = Module:render(Vars),
     Req2 = wf:response(Html,Req),
     {ok, _ReqFinal} = wf:reply(wf:state(status), Req2).
 

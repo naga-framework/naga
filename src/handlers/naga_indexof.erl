@@ -1,7 +1,7 @@
 -module(naga_indexof).
 -export([index/3,event/1]).
 -export([init/3,terminate/3,handle/2]).
--export([view/3,static/3]).
+-export([view/3,static/3,is_theme/1]).
 -default_action(index).
 -actions([index]).
 
@@ -63,12 +63,17 @@ new_script(App,PicklePid) ->
   Port = wf:to_list(wf:config(App,websocket_port,wf:config(App,port,8000))),
   NewScript = ["var transition = {pid: '", PicklePid, "', ", "port:'", Port ,"'}"].
 
-%%TODO:use direct graph
+is_theme(App) ->
+ Themes = [T||T<-[wf:config(A,theme,[])||{A,_,_}<-application:loaded_applications()],T/=[]],
+ lists:member(App,Themes).
+
 view(App1,PathInfo,Base) ->
   App = wf:config(App1,theme,App1),
-  BaseUrl = naga:base_url(App),
-  ViewDir = naga:view_dir(App),
-  Files   = naga:files(view, App),
+  BaseUrl = case is_theme(App) of
+             true -> "/"++wf:to_list(App)++naga_router:base_url(App);
+             _ -> naga_router:base_url(App) end,
+  ViewDir = naga_router:view_dir(App),
+  Files   = naga_router:files(view, App),
   {ok, Cwd} = file:get_cwd(),
   lists:foldr(fun({X,_},Acc) ->
                 Name=join([BaseUrl]++(split(X) -- split(Cwd))-- split(ViewDir)),
@@ -84,7 +89,7 @@ view(App1,PathInfo,Base) ->
               end,[],Files).
 
 static(App,PathInfo,Base) ->
-  {Prefix, StaticDir} = naga:static_dir(App),
+  {Prefix, StaticDir} = naga_router:static_dir(App),
   PathInfo1 = [binary_to_list(X)||X<-PathInfo],
   Dir = case PathInfo1 of 
          [] -> StaticDir;
