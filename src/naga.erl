@@ -404,7 +404,8 @@ dispatch_mvc(App,CtrlModule)             -> [begin
                                                        is_steroid  = is_steroid(CtrlModule)}} 
                                              end || {A,N} <- actions(CtrlModule)].
 
-dispatch(routes,Components)-> lists:foldr( fun(App,Acc) -> 
+dispatch(routes,Components)-> Themes = [T||T<-[wf:config(App,theme,[])||App<-Components],T/=[]],
+                              lists:foldr( fun(App,Acc) -> 
                                     [case consult(App) of
                                      {ok,[]} = Err -> 
                                         io:format("Invalid NAGA routes file: ~p", 
@@ -417,7 +418,7 @@ dispatch(routes,Components)-> lists:foldr( fun(App,Acc) ->
                                         io:format("Missing NAGA routes file: ~p", 
                                         [route_file(App)]), halt(abort,[])
                                    end| Acc] 
-                                 end, [], Components);
+                                 end, [], Themes ++ Components );
 
 dispatch(view, Components) -> lists:foldr(fun(App,Bcc)->
                                             Views = files(view, App),                             
