@@ -96,7 +96,7 @@ print(App,Module,L) ->
 
 routes([{A,_}], #state{apps=Apps}=State) -> 
   App = wf:atom([A]),
-  {ok, _, _, _, DispatchModule, _N, Rules} = naga:dispatch_routes(App),
+  {ok, _, _, _, DispatchModule, _N, Rules} = naga_router:dispatch_routes(App),
   %%FIXME: show diff
   print(App,DispatchModule, Rules),
   Parents = lists:foldl(fun({P,C},Acc) ->
@@ -104,7 +104,7 @@ routes([{A,_}], #state{apps=Apps}=State) ->
                             true -> [P|Acc]; false-> Acc end 
                         end,[],Apps),
   [begin 
-    R = naga:route_file(P),
+    R = naga_router:route_file(P),
     io:format("=> recompile route file, ~p:~p~n",[P,R]),
     touch(R) 
    end || P<- (Parents--[App])],
