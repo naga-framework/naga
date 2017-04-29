@@ -68,6 +68,10 @@ format(N,Fmt,P) -> case N rem 2 of
                       0 -> io:format(naga:yellow(Fmt),P);
                       1 -> io:format(naga:light_yellow(Fmt),P) end.
 
+path({dir,Dir,_}) -> Dir;
+path({priv_file,App,File}) -> filename:join([code:priv_dir(App),File]);
+path(_) -> "".
+
 print(App,Module,L) ->
  Max = lists:foldr(fun({N,_,_,_},A) when N =< 0 -> A;
                       ({N,P,_,O},A) -> max(length(url(P)),A)end,0, L),
@@ -80,9 +84,9 @@ print(App,Module,L) ->
  lists:foreach(
   fun({N,_,_,_}) when N =< 0-> skip;
      ({N,P,naga_static,O})-> 
-       format(N,"~3.B | \"~s | naga_static~n",[N,Pad(url(P))]);
+       format(N,"~3.B | \"~s | naga_static ~p~n",[N,Pad(url(P)),path(O)]);
      ({N,P,cowboy_static,O})->
-       format(N,"~3.B | \"~s | cowboy_static~n",[N,Pad(url(P))]);
+       format(N,"~3.B | \"~s | cowboy_static ~p~n",[N,Pad(url(P)),path(O)]);
      ({N,P,H,#route{application=A,controller=C,action=Act}=O})->
        format(N,"~3.B | \"~s | ~p/~p:~p~n",[N,Pad(url(P)),A,C,Act]);
      ({N,P,H,O})->
