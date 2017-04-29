@@ -205,7 +205,7 @@ url(App,M,A)      -> base_url(App,string:join(["/",sub(App,M),"/",wf:to_list(A),
 url(App,M)        -> case string:tokens(wf:to_list(M), "_") of
                      [_,"mail","view",Name,Ext|_] -> base_url(App,"/"++Name++"."++Ext);
                      _ -> {ok,Cwd} = file:get_cwd(), 
-                         F=((((split(naga:source(M))--split(Cwd))--split(base_dir(App)))--[sep()])--["src","view"]),
+                         F=((((split(source(M))--split(Cwd))--split(base_dir(App)))--[sep()])--["src","view"]),
                          base_url(App,"/"++string:join(F,"/"))
                      end. 
 get_kv({K1,K2}, O, D)
