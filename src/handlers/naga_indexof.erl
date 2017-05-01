@@ -89,6 +89,10 @@ view(App1,PathInfo,Base) ->
               end,[],Files).
 
 static(App,PathInfo,Base) ->
+  % App = wf:config(App1,theme,App1),
+  % BaseUrl = case is_theme(App) of
+  %            true -> "/"++wf:to_list(App)++naga_router:base_url(App);
+  %            _ -> naga_router:base_url(App) end,
   {Prefix, StaticDir} = naga_router:static_dir(App),
   PathInfo1 = [binary_to_list(X)||X<-PathInfo],
   Dir = case PathInfo1 of 
@@ -104,12 +108,13 @@ static(App,PathInfo,Base) ->
                 %io:format("PATH ~p~n",[Path]),
                 {ok, I} = file:read_file_info(Path, [{time, universal}]),
                 {Type,Href} = case filelib:is_dir(Path) of 
-                                true -> {"DIR&nbsp;", Base ++"/"++ XX}; 
+                                true -> case is_theme(App) of 
+                                          true -> {"DIR&nbsp;", "/"++wf:to_list(App)++Base++"/"++XX};
+                                          _ -> {"DIR&nbsp;", Base++"/"++XX} end;  
+                                        
                                 _ -> {"-&nbsp;", Name} end,
                 #tr{cells=[
-                   #td{class=[n],body=[
-                       #link{href=Href, body=[ Name ]}
-                   ]},
+                   #td{class=[n],body=[#link{href=Href, body=[ Name ]}]},
                    #td{class=[m],body=[ naga:dateformat(I#file_info.mtime,"M d Y H:i:s") ]},
                    #td{class=[s],body=[ wf:to_list(I#file_info.size),"&nbsp;" ]},
                    #td{class=[s],body=[ Type ]}
