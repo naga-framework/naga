@@ -315,7 +315,7 @@ dispatch(routes,Components)-> Themes = [T||T<-[wf:config(App,theme,[])||App<-Com
                                  end, [], Themes ++ Components );
 
 dispatch(view, Components) -> Themes = [{theme,T}||T<-[wf:config(App,theme,[])||App<-Components],T/=[]],
-                              L=lists:foldr(fun(App,Bcc)->
+                              lists:foldr(fun(App,Bcc)->
                                               Views = case App of 
                                                        {theme,A} -> files(view, A);
                                                        App -> files(view, App)
@@ -323,8 +323,7 @@ dispatch(view, Components) -> Themes = [{theme,T}||T<-[wf:config(App,theme,[])||
                                               [lists:foldr(fun({_,M},Acc) -> 
                                                             dispatch_view(App,M) ++ Acc
                                                            end, [], Views)|Bcc]
-                                          end,[],Components++Themes),                              
-                              io:format("DISPATCH VIEW ~p~n",[L]),L;
+                                          end,[],Components++Themes);
 
 dispatch(doc, Components)  -> lists:foldr(fun(App,Acc)->
                                            dispatch_doc(App) ++ Acc
