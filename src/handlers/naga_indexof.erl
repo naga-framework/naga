@@ -58,6 +58,7 @@ event(Ev) -> wf:info(?MODULE,"received event ~p~n",[Ev]).
 %% ----------------
 split(F) -> filename:split(F).
 join(F)  -> filename:join(F).
+dateformat(D,F) -> erlydtl_dateformat:format(D,F).
 
 new_script(App,PicklePid) ->
   Port = wf:to_list(wf:config(App,websocket_port,wf:config(App,port,8000))),
@@ -82,7 +83,7 @@ view(App1,PathInfo,Base) ->
                    #td{class=[n],body=[
                        #link{href=Name, body=[ Name ]}
                    ]},
-                   #td{class=[m],body=[ naga:dateformat(I#file_info.mtime,"M d Y H:i:s") ]},
+                   #td{class=[m],body=[ dateformat(I#file_info.mtime,"M d Y H:i:s") ]},
                    #td{class=[s],body=[ wf:to_list(I#file_info.size),"&nbsp;" ]},
                    #td{class=[s],body=[ "view&nbsp;" ]}
                  ]}] ++ Acc

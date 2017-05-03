@@ -3,6 +3,23 @@
 -compile(export_all).
 -include("naga.hrl").
 
+%%FIXME: reverse routing
+location(L,Ctx) when is_binary(L) -> L;
+location(L,Ctx) when is_list(L) -> wf:to_binary(L); 
+location(#{app:=App,controller:=C,action:=A}=L,_) -> P=maps:get(path_info,L),Path = path(App,C,A,P), naga:urlencode(Path,maps:get(params,L,[]));
+location(#{         controller:=C,action:=A}=L,#{'_application':=App}) -> P=maps:get(path_info,L),Path = path(App,C,A,P), naga:urlencode(Path,maps:get(params,L,[]));
+location(#{                       action:=A}=L,#{'_application':=App, '_controller':=C}) -> P=maps:get(path_info,L),Path = path(App,C,A,P), naga:urlencode(Path,maps:get(params,L,[])).
+
+path(App,M,A,P) -> 
+ Path = base_url(wf:to_atom(App),string:join(["/",naga_router:sub(wf:to_list(App),wf:to_list(M)),"/",wf:to_list(A)],"")),
+ string:join([Path, string:join([wf:to_list(X)||X<-P],"/")],"/").
+
+urlencode(Path,Params)  -> Qs= cow_qs:qs([{wf:to_binary(K),wf:to_binary(V)}||{K,V}<-Params]),
+                           P = wf:to_binary(Path),<<P/binary,$?,Qs/binary>>.
+%urldecode(U)            -> cow_qs:urldecode(U).
+urldecode(U)            -> {P,Qs} = cow_http:parse_fullpath(U),
+                           {P,[{wf:to_atom(K),V}||{K,V}<-cow_qs:parse_qs(Qs)]}.
+
 execute(Req, Env) ->
 	 {_, DispatchModule} = lists:keyfind(dispatch, 1, Env),
 	[Host,HostInfo,Path] = cowboy_req:get([host,host_info,path],Req),
