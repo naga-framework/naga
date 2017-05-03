@@ -141,7 +141,7 @@ req_ctx(App,Mod,A,M,P,B,O)-> #{'_application'=> App,
                                '_method'     => M,
                                '_controller' => Mod,
                                '_action'     => A,
-                               '_params'     => P,                             
+                               '_path'       => P,                             
                                '_bindings'   => B,
                                '_opts'       => O,
                                script        => case wf:script() of undefined -> <<>>; S -> S end,
@@ -253,11 +253,11 @@ render({{ok,V,H},Ctx})           -> header(H),
                                     {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),
                                     apply_after(Io,Ctx);
 render({{redirect,L},Ctx})       -> render({{redirect,L,[]},Ctx});
-render({{redirect,L,H},Ctx})     -> header(H++[{<<"Location">>,naga:location(L,Ctx)}]),
+render({{redirect,L,H},Ctx})     -> header(H++[{<<"Location">>,naga_router:location(L,Ctx)}]),
                                     wf:state(status,302),
                                     apply_after([],Ctx);
 render({{moved,L},Ctx})          -> render({{moved,L,[]},Ctx});
-render({{moved,L,H},Ctx})        -> header(H++[{<<"Location">>,naga:location(L,Ctx)}]),
+render({{moved,L,H},Ctx})        -> header(H++[{<<"Location">>,naga_router:location(L,Ctx)}]),
                                     wf:state(status,301),
                                     apply_after([],Ctx);
 %% jsond, json render with DTL

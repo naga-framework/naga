@@ -149,7 +149,6 @@ ipv4_to_ipv6({A,B,C,D})         -> Ip = wf:to_list("~B.~B.~B.~B",[A,B,C,D]),
                                    inet:parse_address("FFFF::" ++ Ip).
 ipv6_supported()                -> case (catch inet:getaddr("localhost", inet6)) of
                                    {ok, _Addr} -> true;{error, _} -> false end.
-
 get_dispatch(App)               -> D = lists:foldr(fun(Rule,Acc)-> 
                                       [{_,Rules}] = ets:lookup(?MODULE,{App,Rule}),
                                       Rules ++ Acc

@@ -72,6 +72,7 @@ not_found(DispatchModule, Path) ->
 
 path_info([],    P)          -> P;
 path_info(['*'], [])         -> [];
+path_info(['*'], P)          -> P;
 path_info([_,'*'|_], [_|T2]) -> T2;
 path_info([_|T1],    [_|T2]) -> path_info(T1, T2).
 
@@ -122,8 +123,7 @@ dispatch_components(App) ->
       _ -> {"$$_{Components}_$$"++base_url(C,"/[...]"),{[wf:to_binary(BU--"/")],C},[]}
     end end || C <- Order].
 
-convert(P) -> P1 = split(P) -- ["/"],
-              convert(P1, []).
+convert(P)               -> P1 = split(P) -- ["/"],convert(P1, []).
 convert([],Acc)          -> lists:reverse(Acc);
 convert(["[...]"|T],Acc) -> convert(T,['*']++Acc);
 convert([[$:|T1]|T],Acc) -> convert(T,[wf:atom([T1])]++Acc);
@@ -226,11 +226,11 @@ url(App,M)        -> case string:tokens(wf:to_list(M), "_") of
                          F=((((split(source(M))--split(Cwd))--split(base_dir(App)))--[sep()])--["src","view"]),
                          base_url(App,"/"++string:join(F,"/"))
                      end. 
-get_kv({K1,K2}, O, D)
+get_kv({K1,K2},O,D)
                   -> case proplists:get_value(K1,O) of
                             undefined -> get_kv(K2, O, D);
                             V         -> KV = {K1,V}, {KV, O -- [KV]} end;
-get_kv(K, O, D)   -> V = proplists:get_value(K,O,D), KV = {K,V}, {KV, O -- [KV]}.
+get_kv(K,O,D)     -> V = proplists:get_value(K,O,D), KV = {K,V}, {KV, O -- [KV]}.
 %module(A,C)      -> wf:atom([A,C]).
 %controller(A,M)  -> wf:atom([wf:to_list(M) -- wf:to_list([A,"_"])]).
 code_url(Code)    -> wf:to_list(["/$_",Code,"_$"]).
