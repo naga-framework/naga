@@ -73,13 +73,6 @@ stream_file(Req, IoDevice, FileSize, MaxFileSizeLimit) ->
 temp_filename(Dir) ->
     list_to_binary(filename:join([Dir, "upload" ++ integer_to_list(erlang:phash2(make_ref()))])).
 
-
-% post param
-
-post_params()   -> ?CTX#cx.form.  %% multipart | list().
-post_param(K)   -> proplists:get_value(wf:to_binary(K),?CTX#cx.form).
-post_param(K,D) -> proplists:get_value(wf:to_binary(K),?CTX#cx.form,D).
-
 %%FIXME: ?
 %% Get the value of a given "deep" POST parameter. 
 %% This function parses parameters that have numerical 
