@@ -3,7 +3,7 @@ Nāga: Erlang Web Framework
 
 work in progress ;-)
 
-#Overview
+# Overview
 
 Naga framework is a web development framework written in erlang which implements the server-side MVC pattern. [Naga](http://github.com/naga-framework/naga) is build on top of [N2O](http://synrc.com/) framework, many of  its components and concepts are from [ChicagoBoss](http://chicagoboss.org).
 
