@@ -140,9 +140,4 @@ OK
 
 # Donation
 
-if you like the project and want to support it. 
-you can make a donation using [dash](http://dash.org) cryptocurrency at:
-
-- dash: Xh7Sm2hsVXRtpJrfDRezELYLRc69Qq5QBJ
-
 
