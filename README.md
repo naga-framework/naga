@@ -17,7 +17,7 @@ naga should perform as well as n2o websocket-server.
 
 Features
 --------
-* live reload ala phoenix [see](https://github.com/naga-framework/naga/blob/9f4b6a895f107cab717ae7e3cb386545879bb250/src/naga_load.erl#L13)
+* live reload ala phoenix [(see)](https://github.com/naga-framework/naga/blob/9f4b6a895f107cab717ae7e3cb386545879bb250/src/naga_load.erl#L13)
 * Same features as [N2O](http://5ht.co/n2o.htm)
 * Easy server–side templates
 * Familiar Rails conventions
