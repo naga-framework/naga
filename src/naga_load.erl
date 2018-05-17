@@ -8,7 +8,42 @@
 -export([onload/1,onnew/2,topsort/1,watch/1,unwatch/1,static/1,routes/1,lang/1]).
 -export([view_graph/1,app/1,parents/1,deps/1,source/1, source/2, is_view/1,view_files/1, controller_files/1]).
 -record(state,{graphs=#{},apps=[]}).
+-include_lib("n2o/include/wf.hrl").
 -include("naga.hrl").
+% -----------------------------------------------------------------------------
+% live reload from phoenix adapted to naga
+% -----------------------------------------------------------------------------
+% sys.config just add naga_load before n2o_nitrogen
+% [{n2o, [...
+% ,{protocols,[ naga_load,
+%               n2o_heart,
+%               n2o_nitrogen,
+%               n2o_file,
+%               n2o_client
+%             ]}
+% ]},...
+% -----------------------------------------------------------------------------
+-define(TOPIC,naga_live_reload).
+info({init,_} = Message, Req, State) -> 
+  wf:reg({?TOPIC}),
+  {unknown, Message, Req, State};
+
+info({?TOPIC,E}, Req, State) ->
+  Reply  = try reload(State#cx.module,E) catch E:R -> Error = wf:stack(E,R),wf:error(?MODULE,"Catch: ~p:~p~n~p",Error),Error end,
+  {reply,wf:format({io,n2o_nitrogen:render_actions(wf:actions()),Reply}),Req,State};
+
+info(Message, Req, State) -> {unknown, Message, Req, State}.
+
+reload(M,{static,{A,P}}) -> wf:wire(asset(M,A,P));
+reload(M,{ctrl,[M]})     -> wf:wire(page());
+reload(M,{ctrl, _})      -> ok;
+reload(M,{view,[V]})     -> wf:wire(view(M,V)).
+
+page()       -> "window.top.location.reload();".
+asset(M,A,P) -> {ok,Js}=naga_livereload_view:render(),wf:wire(Js).
+view(M,V)    -> case lists:prefix(lists:concat([app(V),"_view_",M]),wf:to_list(V)) of true -> page();_ -> ok end. 
+send(Ev)     -> wf:send({?TOPIC},{?TOPIC,Ev}).
+% -----------------------------------------------------------------------------
 
 start_link() -> start_link([]).
 start_link(A)-> gen_server:start_link({local, ?SERVER}, ?MODULE, A, []).
@@ -111,14 +146,21 @@ routes([{A,_}], #state{apps=Apps}=State) ->
     touch(R) 
    end || P<- (Parents--[App])],
   {ok,State}.
-static([E], State) -> wf:info(?MODULE, "Receive STATIC event: ~p", [E]),{ok,State}.
+static([E], State) -> wf:info(?MODULE, ">>> Receive STATIC event: ~p", [E]),
+                      case catch minify(E) of R -> io:format("~p~n",[R]) end,
+                      send({static,E}),
+                      {ok,State}.
 lang([E], State)   -> wf:info(?MODULE, "Receive LANG event: ~p", [E]),{ok,State}.
-onnew(E, State)  -> wf:info(?MODULE, "Receive ONNEW event: ~p", [E]),{ok,State}.
+onnew(E, State)    -> wf:info(?MODULE, "Receive ONNEW event: ~p", [E]),{ok,State}.
 onload([Module]=E, State)-> 
   wf:info(?MODULE, "Receive ONLOAD event: ~p", [E]),
   case is_view(Module) of 
-    false -> {ok,State}; 
-    true -> case deps(Module,State) of
+    false -> App = app(Module),
+             case is_controller(App,Module) of
+              true -> send({ctrl,{App,Module}});
+              _ -> skip end,
+             {ok,State}; 
+    true  -> case deps(Module,State) of
               {error,graph_notfound} -> 
                 io:format("Graph not found for app ~p~n",[app(Module)]),
                 io:format("Use naga:watch(~p).~n",[app(Module)]),
@@ -129,6 +171,7 @@ onload([Module]=E, State)->
               %%FIXME: for now, delete,rebuild graph each time, small graph, fast enought
               % [begin {E, V1, V2, Label} = digraph:edge(G,E),{V1,V2} end|| E <- digraph:edges(G,V1)] 
               App = app(Module),
+              send({view,E}),
               NewState = watch(App,unwatch(App, State)),
               {ok,NewState}              
             end 
@@ -234,4 +277,49 @@ app(M) -> Path = proplists:get_value(source,M:module_info(compile)),
           [_,App|_] = filename:split(Path) -- filename:split(Cwd),
           wf:to_atom(App).
         
+minify(E) ->
+  {AppName, Path}=E,
+  App =wf:to_atom(AppName),
+  Mode=wf:config(App,mode,prod),
+  minify(Mode,App,E).
+
+minify(prod,_,_) -> skip;
+
+minify( dev,App,{_,F}=E) ->
+  minify(filename:extension(lists:last(F)),dev,App,E).
+
+  minify(".js",dev,App,{AppName,F}=E) ->
+      Cfg = wf:config(App,minify,[]),
+      LibDir = code:lib_dir(App),
+      {ok,Cwd} = file:get_cwd(),
+      Dir = case lists:prefix(Cwd,LibDir) of
+             true -> filename:join(filename:split(LibDir) -- filename:split(Cwd));
+             false-> LibDir
+            end,
+      Path = filename:join([Dir]++F),
+      %io:format("uglifyjs path ~p~n",[Path]),
+      uglifyjs(Cfg, App, {AppName,Path});
+
+  %%todo css minification
+  minify(Ext,_,_,E) -> wf:info(?MODULE,naga:red("minify skip ~p~n"),[E]),skip.
+
+uglifyjs([],_,E)                 -> wf:info(?MODULE,"uglifyjs skip ~p~n",[E]),skip;
+uglifyjs({Dir,Files},App,E)      -> uglifyjs(" -p 5 -c -m ",Dir,Files,App,E);
+uglifyjs({Opts,Dir,Files},App,E) -> uglifyjs(Opts,Dir,Files,App,E).
+
+uglifyjs(Opts,Dir,Files,App,{AppName,File})-> 
+  case lists:member(File,Files) of
+    true ->
+      Command = lists:concat(["uglifyjs ",string:join(Files," "),
+                                   Opts, " > ",Dir,"/",AppName,".min.js"]),
+      wf:info(?MODULE,naga:yellow("Minify: ~p~n"),[Command]),
+      case sh:run(Command) of
+           {_,0,_} -> {ok,minify};
+           {_,_,_} -> mad:info(naga:yellow("minifyjs not installed. try `npm install -g uglify`~n")), 
+                      {error,minifier}
+      end;
+    false -> wf:info(?MODULE,"uglifyjs skip ~p~n",[File]),
+             skip
+  end.
+
 

@@ -32,6 +32,11 @@
 %-define(CTYPE_YAML,               [{<<"Content-Type">>,<<"text/yaml">>}]). ??
 -define(CTYPE_YAML,               [{<<"Content-Type">>,<<"text/plain">>}]).
 
+-define(ctrl,     ?MODULE).
+-define(act,      ?FUNCTION_NAME).
+-define(controllr,?MODULE).
+-define(action,   ?FUNCTION_NAME).
+
 -record(route,{type        =[], 
                application =[],
                controller  =[],  %% controller == module
