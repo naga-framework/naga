@@ -34,10 +34,11 @@ info({?TOPIC,E}, Req, State) ->
 
 info(Message, Req, State) -> {unknown, Message, Req, State}.
 
-reload(M,{static,{A,P}}) -> wf:wire(asset(M,A,P));
-reload(M,{ctrl,[M]})     -> wf:wire(page());
-reload(M,{ctrl, _})      -> ok;
-reload(M,{view,[V]})     -> wf:wire(view(M,V)).
+reload(C,{static,{A,P}}) -> wf:wire(asset(C,A,P));
+reload(C,{ctrl,{_,C}})   -> wf:wire(page());
+reload(C,{ctrl,{_,_}})   -> ok;
+reload(C,{module,{_,_}}) -> wf:wire(page());
+reload(C,{view,[V]})     -> wf:wire(view(C,V)).
 
 page()       -> "window.top.location.reload();".
 asset(M,A,P) -> {ok,Js}=naga_livereload_view:render(),wf:wire(Js).
@@ -158,7 +159,7 @@ onload([Module]=E, State)->
     false -> App = app(Module),
              case is_controller(App,Module) of
               true -> send({ctrl,{App,Module}});
-              _ -> skip end,
+              _ -> send({module,{App,Module}}) end,
              {ok,State}; 
     true  -> case deps(Module,State) of
               {error,graph_notfound} -> 
