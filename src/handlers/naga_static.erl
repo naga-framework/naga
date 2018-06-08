@@ -8,42 +8,40 @@
 init(_, _, _) -> {upgrade, protocol, cowboy_rest}.
 
 accept_gzip(<<"gzip,",_/binary>>) -> true;
-accept_gzip(_) -> false.
+accept_gzip(_)                    -> false.
 
-rest_init(Req, {dir, Path, Extra}) when is_binary(Path) -> rest_init(Req, {dir, binary_to_list(Path), Extra});
+rest_init(Req, {dir, Path, Extra}) 
+              when is_binary(Path) -> 
+  rest_init(Req, {dir, binary_to_list(Path), Extra});
+
 rest_init(Req, {dir, Path, Extra}) ->
 	{PathInfo, Req2} = cowboy_req:path_info(Req),
-	Info = {ok, #file_info{type=regular,size=0}},
-	Path1 = filename:join([Path|PathInfo]),
-	%io:format("Rest Init: ~p~n\r",[Path1]),
+	Info     = {ok, #file_info{type=regular,size=0}},
+	Path1    = filename:join([Path|PathInfo]),
   FileName = wf:to_list(unicode:characters_to_binary(Path1,utf8,utf8)),
-  [_Type,Name|RestPath] = SplitPath = filename:split(FileName),
-	{AE, _} = cowboy_req:header(<<"accept-encoding">>,Req),
+	{AE, _}  = cowboy_req:header(<<"accept-encoding">>,Req),
 	case accept_gzip(AE) of 
-		true -> case ets:member(filesystem, FileName++".gz") of
-							true  -> {ok, Req2, {wf:to_binary(FileName), {ok, #file_info{type={gz,ets_regular},size=0}}, Extra}};
+		true  -> case ets:member(filesystem, FileName++".gz") of
+							true  -> {ok, Req2, {FileName, {ok, #file_info{type={gz,ets_regular},size=0}}, Extra}};
 							false -> case ets:member(filesystem, FileName) of
 												true -> {ok, Req2, {FileName, {ok, #file_info{type=ets_regular,size=0}}, Extra}};
-												false-> Path2 = filename:join([code:lib_dir(Name)|RestPath]),
-												        case filelib:is_file(Path2++".gz") of
-																	true -> {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type={gz,regular},size=0}}, Extra}};
-																	false-> case filelib:is_file(Path2) of
-																						true -> {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type=regular,size=0}}, Extra}};
-																						false-> {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type=not_found}}, Extra}}
-																					end 
-													       end
+												false-> disk(FileName,Extra,Req2)
 											 end
-						end;
+						 end;
 		false -> case ets:member(filesystem, FileName) of
 							true  -> {ok, Req2, {FileName, {ok, #file_info{type=ets_regular,size=0}}, Extra}};
-							false -> Path2 = filename:join([code:lib_dir(Name)|RestPath]),
-			                 %wf:info(?MODULE,"Rest Init: ~p~n\r",[Path2]),
-			                 case filelib:is_file(Path2) of
-			                   true ->  {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type=regular,size=0}}, Extra}};
-			                   false -> {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type=not_found}}, Extra}}
-			                 end
+							false -> disk(FileName,Extra,Req2)
 						 end
 	end.		
+
+disk(FileName,Extra,Req) ->
+	case filelib:is_file(FileName++".gz") of
+		true -> {ok, Req, {FileName, {ok, #file_info{type={gz,regular},size=0}}, Extra}};
+		false-> case filelib:is_file(FileName) of
+							true -> {ok, Req, {FileName, {ok, #file_info{type=regular,size=0}}, Extra}};
+							false-> {ok, Req, {FileName, {ok, #file_info{type=not_found}}, Extra}}
+						end 
+	 end.
 
 malformed_request(Req, State) -> {State =:= error, Req, State}.
 
@@ -82,7 +80,7 @@ last_modified(Req, State={_, {ok, #file_info{mtime=Modified}}, _}) -> {Modified,
 
 
 get_file(Req, State={Path, {ok, #file_info{type={gz,regular} }}, _}) ->
-	{ok, Raw} = file:read_file(<<Path/binary,".gz">>),
+	{ok, Raw} = file:read_file(Path ++ ".gz"),
 	Sendfile = fun (Socket, Transport) ->
 	case Transport:send(Socket, Raw) of
 		{ok, _} -> ok;
@@ -92,7 +90,7 @@ get_file(Req, State={Path, {ok, #file_info{type={gz,regular} }}, _}) ->
 	{{stream, size(Raw), Sendfile}, Req, State};
 
 get_file(Req, State={Path, {ok, #file_info{type={gz,ets_regular} }}, _}) ->
-	{ok, Raw} = mad_repl:load_file(<<Path/binary,".gz">>),
+	{ok, Raw} = mad_repl:load_file( Path ++ ".gz"),
 	Sendfile = fun (Socket, Transport) ->
 	case Transport:send(Socket, Raw) of
 		{ok, _} -> ok;
