@@ -10,8 +10,7 @@ init(_, _, _) -> {upgrade, protocol, cowboy_rest}.
 accept_gzip(<<"gzip,",_/binary>>) -> true;
 accept_gzip(_)                    -> false.
 
-rest_init(Req, {dir, Path, Extra}) 
-              when is_binary(Path) -> 
+rest_init(Req, {dir, Path, Extra}) when is_binary(Path) -> 
   rest_init(Req, {dir, binary_to_list(Path), Extra});
 
 rest_init(Req, {dir, Path, Extra}) ->
@@ -23,16 +22,16 @@ rest_init(Req, {dir, Path, Extra}) ->
 	case accept_gzip(AE) of 
 		true  -> case ets:member(filesystem, FileName++".gz") of
 							true  -> {ok, Req2, {FileName, {ok, #file_info{type={gz,ets_regular},size=0}}, Extra}};
-							false -> case ets:member(filesystem, FileName) of
-												true -> {ok, Req2, {FileName, {ok, #file_info{type=ets_regular,size=0}}, Extra}};
-												false-> disk(FileName,Extra,Req2)
-											 end
+							false -> which(FileName,Extra,Req2)
 						 end;
-		false -> case ets:member(filesystem, FileName) of
-							true  -> {ok, Req2, {FileName, {ok, #file_info{type=ets_regular,size=0}}, Extra}};
-							false -> disk(FileName,Extra,Req2)
-						 end
-	end.		
+		false -> which(FileName,Extra,Req2)
+	end.
+
+which(FileName,Extra,Req2) ->
+	case ets:member(filesystem, FileName) of
+		true  -> {ok, Req2, {FileName, {ok, #file_info{type=ets_regular,size=0}}, Extra}};
+		false -> disk(FileName,Extra,Req2)
+	end.
 
 disk(FileName,Extra,Req) ->
 	case filelib:is_file(FileName++".gz") of
@@ -78,45 +77,30 @@ generate_default_etag(Size, Mtime) ->
 
 last_modified(Req, State={_, {ok, #file_info{mtime=Modified}}, _}) -> {Modified, Req, State}.
 
-
 get_file(Req, State={Path, {ok, #file_info{type={gz,regular} }}, _}) ->
 	{ok, Raw} = file:read_file(Path ++ ".gz"),
-	Sendfile = fun (Socket, Transport) ->
-	case Transport:send(Socket, Raw) of
-		{ok, _} -> ok;
-		{error, closed} -> ok;
-		{error, etimedout} -> ok;
-		_ -> ok end end,
+	Sendfile  = fun (Socket, Transport) -> send(Transport,Socket,Raw) end,
 	{{stream, size(Raw), Sendfile}, Req, State};
 
 get_file(Req, State={Path, {ok, #file_info{type={gz,ets_regular} }}, _}) ->
 	{ok, Raw} = mad_repl:load_file( Path ++ ".gz"),
-	Sendfile = fun (Socket, Transport) ->
-	case Transport:send(Socket, Raw) of
-		{ok, _} -> ok;
-		{error, closed} -> ok;
-		{error, etimedout} -> ok;
-		_ -> ok end end,
+	Sendfile  = fun (Socket, Transport) -> send(Transport,Socket,Raw) end,
 	{{stream, size(Raw), Sendfile}, Req, State};
 
 get_file(Req, State={Path, {ok, #file_info{type=regular}}, _}) ->
 	{ok, Raw} = file:read_file(Path),
-	Sendfile = fun (Socket, Transport) ->
-	case Transport:send(Socket, Raw) of
-		{ok, _} -> ok;
-		{error, closed} -> ok;
-		{error, etimedout} -> ok;
-		_ -> ok end end,
+	Sendfile  = fun (Socket, Transport) -> send(Transport,Socket,Raw) end,
 	{{stream, size(Raw), Sendfile}, Req, State};
 
 get_file(Req, State={Path, {ok, #file_info{type=ets_regular}}, _}) ->
 	{ok, Raw} = mad_repl:load_file(Path),
-	Sendfile = fun (Socket, Transport) ->
+	Sendfile  = fun (Socket, Transport) -> send(Transport,Socket,Raw) end,
+	{{stream, size(Raw), Sendfile}, Req, State}.
+
+send(Transport,Socket,Raw) ->
 	case Transport:send(Socket, Raw) of
 		{ok, _} -> ok;
 		{error, closed} -> ok;
 		{error, etimedout} -> ok;
-		_ -> ok end end,
-	{{stream, size(Raw), Sendfile}, Req, State}.
-
+		_ -> ok end.
 
