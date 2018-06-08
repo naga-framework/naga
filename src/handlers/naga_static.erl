@@ -16,17 +16,15 @@ rest_init(Req, {dir, Path, Extra}) ->
 	Info = {ok, #file_info{type=regular,size=0}},
 	Path1 = filename:join([Path|PathInfo]),
 	%io:format("Rest Init: ~p~n\r",[Path1]),
-  StringPath = wf:to_list(unicode:characters_to_binary(Path1,utf8,utf8)),
-  [_Type,Name|RestPath]=SplitPath = filename:split(StringPath),
-	FileName = filename:absname(StringPath),
+  FileName = wf:to_list(unicode:characters_to_binary(Path1,utf8,utf8)),
+  [_Type,Name|RestPath] = SplitPath = filename:split(FileName),
 	{AE, _} = cowboy_req:header(<<"accept-encoding">>,Req),
 	case accept_gzip(AE) of 
 		true -> case ets:member(filesystem, FileName++".gz") of
 							true  -> {ok, Req2, {wf:to_binary(FileName), {ok, #file_info{type={gz,ets_regular},size=0}}, Extra}};
 							false -> case ets:member(filesystem, FileName) of
-												true -> {ok, Req2, {wf:to_binary(FileName), {ok, #file_info{type=ets_regular,size=0}}, Extra}};
+												true -> {ok, Req2, {FileName, {ok, #file_info{type=ets_regular,size=0}}, Extra}};
 												false-> Path2 = filename:join([code:lib_dir(Name)|RestPath]),
-												         %wf:info(?MODULE,"Rest Init: ~p~n\r",[Path2]),
 												        case filelib:is_file(Path2++".gz") of
 																	true -> {ok, Req2, {wf:to_binary(Path2), {ok, #file_info{type={gz,regular},size=0}}, Extra}};
 																	false-> case filelib:is_file(Path2) of
@@ -56,10 +54,9 @@ forbidden(Req, State={_, {ok, #file_info{access=Access}}, _}) when Access =:= wr
 forbidden(Req, State) -> {false, Req, State}.
 
 content_types_provided(Req, State={Path, _, Extra}) ->
-  %wf:info(?MODULE,"Content Type Provided: ~p~n\r",[Path]),
 	case lists:keyfind(mimetypes, 1, Extra) of
-		false -> {[{cow_mimetypes:web(Path), get_file}], Req, State};
-		{mimetypes, Module, Function} -> {[{Module:Function(Path), get_file}], Req, State};
+		false -> {[{cow_mimetypes:web(wf:to_binary(Path)), get_file}], Req, State};
+		{mimetypes, Module, Function} -> {[{Module:Function(wf:to_binary(Path)), get_file}], Req, State};
 		{mimetypes, Type} -> {[{Type, get_file}], Req, State}
 	end.
 
