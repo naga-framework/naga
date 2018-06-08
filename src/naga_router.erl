@@ -20,6 +20,16 @@ urlencode(Path,Params)  -> Qs= cow_qs:qs([{wf:to_binary(K),wf:to_binary(V)}||{K,
 urldecode(U)            -> {P,Qs} = cow_http:parse_fullpath(U),
                            {P,[{wf:to_atom(K),V}||{K,V}<-cow_qs:parse_qs(Qs)]}.
 
+keys(TableName) ->
+    FirstKey = ets:first(TableName),
+        keys(TableName, FirstKey, [FirstKey]).
+
+keys(_TableName, '$end_of_table', ['$end_of_table'|Acc]) ->
+    Acc;
+keys(TableName, CurrentKey, Acc) ->
+    NextKey = ets:next(TableName, CurrentKey),
+    keys(TableName, NextKey, [NextKey|Acc]).
+
 execute(Req, Env) ->
 	 {_, DispatchModule} = lists:keyfind(dispatch, 1, Env),
 	[Host,HostInfo,Path] = cowboy_req:get([host,host_info,path],Req),
@@ -78,41 +88,22 @@ path_info([_|T1],    [_|T2]) -> path_info(T1, T2).
 
 
 %% dispatch
-
+%% FIXME: route files, easy way to bundle
 dispatch_routes(App) -> 
   Modules = wf:config(App,modules,[]),
   Components = [App] ++ Modules,
-  case read_dump_file(Components) of
-   {error, Raison} = Err -> Err; 
-   [{_,R0}] ->
-    RC = dispatch_components(App),
-    R = RC ++ R0,  
-    {Rules,N} = lists:foldl(fun({A,B,C},{Acc,Count}) ->
-                                  {Acc++[{Count,convert(A),B,C}], Count+1};
-                                ({N,A,B,C},{Acc,Count}) ->
-                                  {Acc++[{N,convert(A),B,C}], Count}
-                            end,{[],1-length(RC)}, R),
-    DispatchModule = module_dispatch_name(App),
-    ok = dispatch_compiler:compile_load(DispatchModule,Rules),
-    {ok, App, Modules, Components, DispatchModule, N, Rules}
-  end.
-
-read_dump_file(Components)
-   when is_list(Components)-> App = hd(Components),
-                               case read_dump_file(App) of 
-                                {ok, R} -> R;
-                                {error, enoent} -> 
-                                  Path = naga_router:route_file(App),
-                                  case filelib:is_file(Path) of
-                                    true -> lists:flatten(dispatch(Components));
-                                    false-> {error, wf:f("Missing route file (~s)",[Path])}
-                                  end 
-                               end;
-read_dump_file(App)
-   when is_atom(App)       -> Path = dump_file(App),
-                              case mad_repl:load_file(Path) of
-                               {ok, ETSFile} -> {ok, ETSFile}; 
-                               _ ->  file:read_file(Path) end.
+  Path = naga_router:route_file(App),
+  [{_,R0}] = lists:flatten(dispatch(Components)),
+  RC = dispatch_components(App),
+  R = RC ++ R0,  
+  {Rules,N} = lists:foldl(fun({A,B,C},{Acc,Count}) ->
+                                {Acc++[{Count,convert(A),B,C}], Count+1};
+                             ({N,A,B,C},{Acc,Count}) ->
+                                {Acc++[{N,convert(A),B,C}], Count}
+                          end,{[],1-length(RC)}, R),
+  DispatchModule = module_dispatch_name(App),
+  ok = dispatch_compiler:compile_load(DispatchModule,Rules),    
+  {ok, App, Modules, Components, DispatchModule, N, Rules}.
 
 dispatch_components(App) ->
   Components = wf:config(App,modules,[]),
@@ -150,12 +141,12 @@ sep()             -> "/". %%FIXME: linux/unix/macosx ok, windows?
 is_view(M)        -> naga_load:is_view(M).
 source(M)         -> naga_load:source(M).
 app(M)            -> naga_load:app(M).
-route_file(App)   -> filename:join([priv_dir(App), lists:concat([wf:atom([App]), ".routes"])]).
-dump_file(App)    -> filename:join([priv_dir(App), lists:concat([wf:atom([App]), ".routes.dat"])]).
-dump_route(App)   -> File = dump_file(App),
-                     Components = [App] ++ wf:config(App,modules,[]), 
-                     B = term_to_binary(cowboy_router:compile(dispatch(Components))),
-                     file:write_file(File,B).
+route_file(App)   -> Fname = lists:concat([wf:atom([App]), ".routes"]),
+                     case wf:config(App,mode,prod) of
+                      dev -> filename:join([priv_dir(App), Fname]);
+                      prod-> filename:join(["apps",wf:to_list(App), "priv", Fname])
+                     end.
+
 static_prefix(App)-> wf:config(App,static_prefix,"/static").
 static_url(App,Uri)-> string:join([static_prefix(App),Uri],"").
 doc_prefix(App)   -> wf:config(App,doc_prefix,   "/doc").
@@ -259,11 +250,13 @@ opts(App, H, Opts)
 
 opts(_App,H,Opts) 
   when is_atom(H) -> Opts.
-consult(App)      -> case mad_repl:load_file(route_file(App)) of
+consult(App)      -> Path = route_file(App),
+                     case mad_repl:load_file(Path) of
                       {ok, ETSFile} -> 
-                           %wf:info(?MODULE,"LOAD ROUTE FILE from bundle. ~s", [Path]),
+                           %io:format("LOAD ROUTE FILE from bundle. ~s~n", [Path]),
                            {ok, mad_tpl:consult(ETSFile)};
-                      _ -> file:consult(route_file(App)) end.
+                      O -> %io:format("LOAD ROUTE FILE from disk. ~p, ~s~n", [O,Path]),
+                           file:consult(Path) end.
 
 routeIndexof(A,O) ->  #route{type=mvc,application=A,controller=naga_indexof,
                         action=index,want_session=true,is_steroid=true,opts=O}.
