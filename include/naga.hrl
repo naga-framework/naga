@@ -31,24 +31,26 @@
 -define(CTYPE_PLAIN,              [{<<"Content-Type">>,<<"text/plain">>}]).
 %-define(CTYPE_YAML,               [{<<"Content-Type">>,<<"text/yaml">>}]). ??
 -define(CTYPE_YAML,               [{<<"Content-Type">>,<<"text/plain">>}]).
+-define(CTYPE_CSV,                [{<<"Content-Type">>,<<"text/csv">>}]).
 
--define(ctrl,     ?MODULE).
--define(act,      ?FUNCTION_NAME).
--define(controllr,?MODULE).
--define(action,   ?FUNCTION_NAME).
+-define(ctrl,      ?MODULE).
+-define(act,       ?FUNCTION_NAME).
+-define(controller,?MODULE).
+-define(action,    ?FUNCTION_NAME).
 
--record(route,{type        =[], 
-               application =[],
-               controller  =[],  %% controller == module
-               view        =[],  %% view       == module 
-               action      =index,
-               arity       =3,	           
-               want_session=true,
-               is_steroid  =false,
-               params      =undefined,
-               bindding    =undefined,
-               opts        =undefined,
-               match       =undefined
+-record(route,{type           = [], 
+               application    = [],
+               controller     = [],   %% controller == module
+               view           = [],   %% view       == module 
+               action         = index,%% default action
+               arity          = 3,	           
+               want_session   = true,
+               is_steroid     = false,
+               websocket_port = [],
+               params         = undefined,
+               bindding       = undefined,
+               opts           = undefined,
+               match          = undefined
               }).                           
 
 -endif.

@@ -58,7 +58,9 @@ execute(Req, Env) ->
 		{ok,{{N,Pattern,naga_cowboy,HandlerOpts}=R,Bindings}=Match} ->
 			PathInfo = path_info(Pattern,Path0),
 		 	Req2 = cowboy_req:set_bindings(HostInfo, PathInfo, Bindings, Req),
-			{ok, Req2, [{handler, naga_cowboy},{handler_opts, HandlerOpts#route{match={N,Pattern,naga_cowboy,Bindings}}}|Env]};
+      {_, WsPort} = lists:keyfind(websocket_port, 1, Env),
+      New = HandlerOpts#route{match={N,Pattern,naga_cowboy,Bindings},websocket_port=WsPort},
+			{ok, Req2, [{handler, naga_cowboy},{handler_opts, New}|Env]};
 
 		{ok,{{N,Pattern,Handler,HandlerOpts}=R,Bindings}=Match} ->
 			PathInfo = path_info(Pattern,Path0),
@@ -71,7 +73,8 @@ execute(Req, Env) ->
 							{ok,{{N,Pattern,Handler,HandlerOpts}=R,Bindings}=Match} ->
 								PathInfo = path_info(Pattern,Path0),
 							 	Req2 = cowboy_req:set_bindings(HostInfo, PathInfo, Bindings, Req),
-								{ok, Req2, [{handler, Handler},{handler_opts, HandlerOpts}|Env]};
+                {_, WsPort} = lists:keyfind(websocket_port, 1, Env),
+								{ok, Req2, [{handler, Handler},{handler_opts, HandlerOpts#route{websocket_port=WsPort}}|Env]};
 							_ -> {error, 404, Req} end end
 	end.
 
@@ -90,17 +93,17 @@ path_info([_|T1],    [_|T2]) -> path_info(T1, T2).
 %% dispatch
 %% FIXME: route files, easy way to bundle
 dispatch_routes(App) -> 
-  Modules = wf:config(App,modules,[]),
+  Modules    = wf:config(App,modules,[]),
   Components = [App] ++ Modules,
-  Path = naga_router:route_file(App),
-  [{_,R0}] = lists:flatten(dispatch(Components)),
-  RC = dispatch_components(App),
-  R = RC ++ R0,  
-  {Rules,N} = lists:foldl(fun({A,B,C},{Acc,Count}) ->
+  Path       = naga_router:route_file(App),
+  [{_,R0}]   = lists:flatten(dispatch(Components)),
+  RC         = dispatch_components(App),
+  R          = RC ++ R0,  
+  {Rules,N}  = lists:foldl(fun({A,B,C},{Acc,Count}) ->
                                 {Acc++[{Count,convert(A),B,C}], Count+1};
-                             ({N,A,B,C},{Acc,Count}) ->
+                              ({N,A,B,C},{Acc,Count}) ->
                                 {Acc++[{N,convert(A),B,C}], Count}
-                          end,{[],1-length(RC)}, R),
+                           end,{[],1-length(RC)}, R),
   DispatchModule = module_dispatch_name(App),
   ok = dispatch_compiler:compile_load(DispatchModule,Rules),    
   {ok, App, Modules, Components, DispatchModule, N, Rules}.

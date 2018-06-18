@@ -10,34 +10,12 @@
 -export([index/3,before_filters/2,tpl_name/4]).
 
 transition(Actions) -> receive {'INIT',A} -> transition(A); {'N2O',Pid} -> Pid ! {actions,Actions} end.
-run(Req, []) ->
+run(Req, #route{type=mvc,is_steroid=true,websocket_port=WsPort}=Route) ->
+    #route{application=App,controller=Module,action=Act,
+           arity=A,want_session=WantSession,opts=Opts}=Route,
     wf:state(status,200),
     Pid = spawn(fun() -> transition([]) end),
-    wf:script(["var transition = {pid: '", wf:pickle(Pid), "', ",
-                "port:'", wf:to_list(wf:config(n2o,websocket_port,wf:config(n2o,port,8000))),"'}"]),
-    Ctx = wf:init_context(Req),
-    Ctx1 = wf:fold(init,Ctx#cx.handlers,Ctx),    
-    wf:actions(Ctx1#cx.actions),
-    wf:context(Ctx1),
-    Elements = case Ctx1#cx.path of              
-                #{}=R -> #{application:=App,controller:=C,action:=A,method:=M,params:=P,bindings:=B}=R,
-                         try handle(App,C,A,M,P,B,[]) catch C:E -> wf:error_page(C,E) end;
-                    _ -> try (Ctx1#cx.module):main() catch C:E -> wf:error_page(C,E) end
-               end,
-    Html = render(Elements),    
-    Actions = wf:actions(),
-    Pid ! {'INIT',Actions},
-    Ctx2 = wf:fold(finish,Ctx#cx.handlers,?CTX),
-    Req2 = wf:response(Html,set_cookies(wf:cookies(),Ctx2#cx.req)),
-    %wf:info(?MODULE,"Cookies Req: ~p",[Req2]),
-    {ok, _ReqFinal} = wf:reply(wf:state(status), Req2);
-
-run(Req, #route{type=mvc,is_steroid=true}=Route) ->
-    #route{application=App,controller=Module,action=Act,arity=A,want_session=WantSession,opts=Opts}=Route,
-    wf:state(status,200),
-    Pid = spawn(fun() -> transition([]) end),
-    wf:script(["var transition = {pid: '", wf:pickle(Pid), "', ",
-                "port:'", wf:to_list(wf:config(App,websocket_port,wf:config(App,port,8000))),"'}"]),
+    wf:script(["var transition = {pid: '", wf:pickle(Pid), "', ","port:'", wf:to_list(WsPort) ,"'}"]),
     Ctx0 = wf:init_context(Req),
     Ctx  = Ctx0#cx{module=Module},
     Ctx1 = init(Ctx, false, WantSession),
@@ -242,6 +220,7 @@ header([{K,V}|T])                -> wf:header(K,V),header(T).
 
 render({{output,Io},Ctx})        -> render({{output,Io,?CTYPE_PLAIN},Ctx});
 render({{output,Io,H},_})        -> header(H),Io;
+render({S,_}) when is_integer(S) -> wf:state(status,S),<<>>;
 render({{S,Io,H},_}) 
               when is_integer(S) -> wf:state(status,S),header(H),Io;
 render({ok,Ctx})                 -> render({{ok,[]},Ctx}); 

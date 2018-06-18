@@ -9,6 +9,20 @@
 
 -define(CHILD(I, Type, Args), {I, {I, start_link, Args}, permanent, 5000, Type, [I]}).
 
+red(S)         -> lists:concat(["\e[31m",S,"\e[0m"]).
+green(S)       -> lists:concat(["\e[32m",S,"\e[0m"]).
+yellow(S)      -> lists:concat(["\e[33m",S,"\e[0m"]).
+blue(S)        -> lists:concat(["\e[34m",S,"\e[0m"]).
+magenta(S)     -> lists:concat(["\e[35m",S,"\e[0m"]).
+light_green(S) -> lists:concat(["\e[92m",S,"\e[0m"]).
+light_yellow(S)-> lists:concat(["\e[93m",S,"\e[0m"]).
+light_blue(S)  -> lists:concat(["\e[94m",S,"\e[0m"]).
+light_gray(S)  -> lists:concat(["\e[97m",S,"\e[0m"]).
+default(S)     -> lists:concat(["\e[39m",S,"\e[0m"]).
+blink(S)       -> lists:concat(["\e[5m",S,"\e[25m"]).
+inverted(S)    -> lists:concat(["\e[7m",S,"\e[27m"]).
+
+cap(A,P)   -> string:to_upper(wf:to_list(A)) ++ "_" ++ string:to_upper(wf:to_list(P)).  
 mode()     -> wf:config(naga,mode,prod).
 tables()   -> [ ?MODULE ].
 opt()      -> [ set, named_table, { keypos, 1 }, public ].
@@ -24,9 +38,9 @@ stop(Apps) when is_list(Apps) -> [stop(App)||App<-Apps];
 stop(App)  -> case lists:member(App, wf:config(naga,watch,[])) of 
                 true  -> Listeners = wf:config(App,listeners,[]),
                          [begin
-                            IpType = ip_type(ip(O)),
-                            Port = port(O),
-                            Ref = listener_name(X,App,IpType,Port),
+                            IpType = ip_type(ip(cap(App,X),O)),
+                            Port   = port(cap(App,X),O),
+                            Ref    = listener_name(X,App,IpType,Port),
                             error_logger:info_msg("stoping ~p:~s", 
                               [App, begin [P,_] = string:tokens(wf:to_list(Ref),"_"), P end]),
                             cowboy:stop_listener(Ref)
@@ -37,9 +51,13 @@ stop(App)  -> case lists:member(App, wf:config(naga,watch,[])) of
 
 start(App) when is_atom(App) -> start([App]);
 start(Apps) -> [case protoOpts(mode(),App) of
-                 {error, Err} -> error_logger:error_msg("Cannot Start Listener (~p)"
-                                          " for reason: ~p~n",[App,Err]),{App, Err};
-                  ProtoOpts -> start_listeners(App, ProtoOpts) end || App <- Apps].
+                 {error, Err} -> 
+                  error_logger:error_msg("Cannot Start Listener (~p)"
+                                         " for reason: ~p~n",[App,Err]),
+                  {App, Err};
+                 ProtoOpts -> 
+                  start_listeners(App, ProtoOpts) %?
+                end || App <- Apps].
 
 protoOpts(Mode,App) ->
   case naga_router:dispatch_routes(App) of
@@ -48,7 +66,8 @@ protoOpts(Mode,App) ->
       naga_load:print(App, DispatchModule, Rules),
       _AppsInfo = boot_apps(Components),
       [{env,[{application, {App,Modules}} 
-            %,{appsInfo, AppsInfo}                       
+             %,{appsInfo, AppsInfo} 
+             ,{websocket_port, wsport(App)}                      
              ,{dispatch, DispatchModule}]}
              ,{middlewares, middlewares()}]
   end.
@@ -61,11 +80,22 @@ start_listeners(App, ProtoOpts) ->
           listener(App, Listeners, ProtoOpts, []) 
   end.
 
+wsport(App) ->
+    WsPortEnv = cap(App,websocket_port),
+    case os:getenv(WsPortEnv) of 
+     false  -> wf:config(App,websocket_port,?DEFAULT_HTTP_PORT); 
+     WsPort -> io:format(blue("~s ~p~n"),[WsPortEnv,WsPort]),
+               %application:set_env(n2o,websocket_port,),
+               application:set_env(App,websocket_port,list_to_integer(WsPort)),
+               io:format(magenta("~s ~p~n"),[WsPortEnv,wf:config(App,websocket_port)]),
+               WsPort
+    end.
 listener(_,[], _,Acc)   -> Acc;
-listener(App, [{Proto, Opts}|T], ProtoOpts, Acc) ->
-    Ip          = abort(ip(Opts),   "Invalid ip format ~p\r\n"), 
-    IpType      = abort(ip_type(Ip),"Invalid ip type ~p\r\n"),
-    Port        = abort(port(Opts), "Invalid port ~p\r\n"),
+listener(App, [{Proto0, Opts}|T], ProtoOpts, Acc) ->
+    Proto       = case os:getenv(cap(App,"PROTO")) of false -> Proto0; E -> E end,
+    Ip          = abort(ip(cap(App,Proto),Opts),  "Invalid ip format ~p\r\n"), 
+    IpType      = abort(ip_type(Ip),              "Invalid ip type ~p\r\n"),
+    Port        = abort(port(cap(App,Proto),Opts),"Invalid port ~p\r\n"),
     Listener    = listener_name(Proto,App,IpType,Port),
     NbAcceptors = proplists:get_value(acceptors, Opts, ?DEFAULT_ACCEPTOR_PROCESSES),
     SslOpts     = case (Proto == https) or (Proto == spdy) of false -> [] ;
@@ -95,35 +125,39 @@ boot_app([App|T], Acc)  -> {ok, Modules} = application:get_key(App,modules),
                                       },
                            boot_app(T, [{App, AppInfo}|Acc]).
 
-red(S)         -> lists:concat(["\e[31m",S,"\e[0m"]).
-green(S)       -> lists:concat(["\e[32m",S,"\e[0m"]).
-yellow(S)      -> lists:concat(["\e[33m",S,"\e[0m"]).
-blue(S)        -> lists:concat(["\e[34m",S,"\e[0m"]).
-magenta(S)     -> lists:concat(["\e[35m",S,"\e[0m"]).
-light_green(S) -> lists:concat(["\e[92m",S,"\e[0m"]).
-light_yellow(S)-> lists:concat(["\e[93m",S,"\e[0m"]).
-light_blue(S)  -> lists:concat(["\e[94m",S,"\e[0m"]).
-light_gray(S)  -> lists:concat(["\e[97m",S,"\e[0m"]).
-default(S)     -> lists:concat(["\e[39m",S,"\e[0m"]).
-blink(S)       -> lists:concat(["\e[5m",S,"\e[25m"]).
-inverted(S)    -> lists:concat(["\e[7m",S,"\e[27m"]).
+
+parse_ip(S)    -> case inet:parse_address(S) of 
+                    {ok,Ip} -> Ip; 
+                    Err -> Err 
+                  end.
 
 trans(_,X,undefined)            -> X;
 trans(A,X,L)                    -> case naga_lang:lookup(A,{wf:to_list(L),X}) of
-                                    undefined -> {M,F} = wf:config(A,i18n_undefined,{naga_mvc,i18n_undefined}),
-                                                 M:F(X);
-                                    E -> E end.
-ip(O)                           -> case proplists:get_value(ip, O, {0, 0, 0, 0}) of
-                                    {_,_,_,_} =Ipv4 -> Ipv4;
-                                    {_,_,_,_,_,_,_,_}=Ipv6 -> Ipv6;
-                                    Val when is_list(Val) -> 
-                                      case inet:parse_address(Val) of 
-                                        {ok,Ip} -> Ip; 
-                                        Err -> Err end end.
-port(O)                         -> case proplists:get_value(port, O, ?DEFAULT_HTTP_PORT) of
-                                    P when is_integer(P),
-                                           P >= 0, P =< 65535 -> P; 
-                                    _ -> {error, invalid_port} end.
+                                     undefined -> 
+                                      {M,F} = wf:config(A,i18n_undefined,{naga_mvc,i18n_undefined}),
+                                      M:F(X);
+                                     E -> E 
+                                   end.
+env(E)                          -> Env = wf:f("~s",[E]),
+                                   Val = os:getenv(Env),
+                                   io:format(red("~s ~p~n"),[Env,Val]),
+                                   Val.                                   
+ip(E,O)                         -> Ip = case proplists:get_value(ip,O,{127,0,0,1}) of
+                                          {_,_,_,_}=Ipv4         -> Ipv4;
+                                          {_,_,_,_,_,_,_,_}=Ipv6 -> Ipv6;
+                                          Val when is_list(Val)  -> parse_ip(Val)
+                                        end,
+                                   case env(cap(E,"IP")) of false -> Ip;V -> parse_ip(V) end.
+
+port(E,O)                       -> Port = case proplists:get_value(port,O,?DEFAULT_HTTP_PORT) of
+                                            P when is_integer(P),
+                                                   P >= 0, P =< 65535 -> P; 
+                                            _ -> {error, invalid_port} 
+                                          end,
+                                   case env(cap(E,"PORT")) of 
+                                      false -> Port;V -> list_to_integer(V) 
+                                   end.
+
 %middlewares(prod) -> wf:config(naga,middlewares,[cowboy_router,cowboy_handler]);
 middlewares()                   -> wf:config(naga,middlewares,[naga_router,cowboy_handler]).
 watch(App)                      -> naga_load:watch(App).
@@ -167,14 +201,6 @@ match1(App,[<<"/">>|Path])      -> match1(App,Path);
 match1(App,Path)                -> DispatchModule = naga_router:module_dispatch_name(App),
                                    DispatchModule:match(Path,undefined).
 
-% to_num(Bin) ->
-%     N = binary_to_list(Bin),
-%     case string:to_float(N) of
-%         {error,no_float} -> list_to_integer(N);
-%         {F,_Rest} -> F
-%     end.
-
-% -----------
 to_seconds()  -> to_seconds(calendar:local_time()).
 to_seconds(D) -> calendar:datetime_to_gregorian_seconds(D).
 to_time(S)    -> calendar:gregorian_seconds_to_datetime(S).
