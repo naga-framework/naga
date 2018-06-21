@@ -10,55 +10,102 @@ Naga framework is a web development framework written in erlang which implements
 Naga provides the best of both framework - [ChicagoBoss](http://chicagoboss.org) and  [N2O](http://synrc.com/), for implementing realtime features in modern web HTML5 application.
 
 
-### Why an other web-framework
-
-love [ChicagoBoss](http://chicagoboss.org), love [n2o](http://github.com/synrc/n2o) stack why not both
-naga should perform as well as n2o websocket-server.
-
 Features
 --------
+* some CB & N2O ...
 * live reload ala phoenix [(see)](https://github.com/naga-framework/naga/blob/9f4b6a895f107cab717ae7e3cb386545879bb250/src/naga_load.erl#L13)
-* Same features as [N2O](http://5ht.co/n2o.htm)
-* Easy server–side templates
-* Familiar Rails conventions
-* Django Template, HTML DSL with nitro, SVG DSL with svg
-* Fast Routing, compiled modules from a routes file.
-* NO parametized controller module
-* Naga app are more OTPish
-* Multiple listener
-* Small codebase
-* Modulare components: [lang](https://github.com/naga-framework/naga_lang), [mail](https://github.com/naga-framework/naga_mail), [fcgi](https://github.com/naga-framework/naga_fcgi)
-* Easy extensible (you can use any cowboy handler you wrote)
-* Free to use any database layer you like.
-* Gzip compressed asset from HD or memory. (naga_static)
+* Desktop application erlang/electron-app 
 
-Exemples
+
+Electron
 --------
+- bundle your electron-app with erlang runtime (or not), and your naga-app (mad bundle <appname>)
 
-Ruby on Rails:
-
-```ruby
-def index
-    case @request.method
-    when "POST"
-        # do something...
-    when "GET"
-        # do something...
-    end
-end  
-```
-
-Naga:
-
+sys.config
 ```erlang
- index(<<"POST">>, [], Ctx) ->
-    % do something...
- index(<<"GET">>,  [], Ctx) ->
-    % do something...
- 
- event(Event) ->
-    % do something
+[{n2o, [
+        ,{protocols,[ naga_electron, %ws 
+                      naga_load,     %live reload
+                      ...
+                    ]}
 ```
+
+erlang: routes file
+```erlang
+,{ "/electron"       ,[{app, <appname>},{ctrl, electron} ,{act, index}], []}
+ 
+```
+erlang: naga controller
+```erlang 
+-module(electron).
+-compile(export_all).
+
+index(_,_,_) -> 404.
+event({electron,init}) -> wf:wire("console.log('Hello World!!');"). 
+
+```
+
+- electron:main process you will need bert.js, utf8.js, client.js and the code below to establish a ws connection to your erlang app.
+```javascript
+$ws = { heart: true, interval: 4000,
+        creator: function(url) { new WebSocket(url); },
+        onheartbeat: function() { this.channel.send('PING'); } };
+
+// N2O Reliable Connection
+
+$conn = { onopen: nop, onmessage: nop, onclose: nop, onconnect: nop,
+          send:  function(data)   { if (this.port.channel) this.port.channel.send(data); },
+          close: function()       { if (this.port.channel) this.port.channel.close(); } };
+ct = 0;
+transports = [ $ws ];
+heartbeat = null;
+reconnectDelay = 1000;
+maxReconnects = 100;
+
+function nop() { }
+function bullet(url) { $conn.url = url; return $conn; }
+function xport() { return maxReconnects <= ct ? false : transports[ct++ % transports.length]; }
+function reconnect() { setTimeout(function() { connect(); }, reconnectDelay); }
+function next() { $conn.port = xport(); return $conn.port ? connect() : false; }
+function connect() {
+    $conn.port.channel = new WebSocket($conn.url);
+    $conn.port.channel.onerror = function(e){};
+    if (!$conn.port.channel) { setInterval(next(), 4000);} //retry until we establish cnx
+    $conn.port.channel.onmessage = function(e) { $conn.onmessage(e); };
+    $conn.port.channel.onopen = function() {
+        if ($conn.port.heart) heartbeat = setInterval(function(){$conn.port.onheartbeat();}, $conn.port.interval);
+        $conn.onopen();
+        $conn.onconnect(); };
+    $conn.port.channel.onclose = function() { $conn.onclose(); clearInterval(heartbeat); reconnect(); };
+    return $conn; }
+    
+function NAGA_start(url) {
+    ws = new bullet(url);ws.onerror = function(e){};
+    ws.onmessage = function (evt) { // formatters loop
+    for (var i=0;i<protos.length;i++) { p = protos[i]; if (p.on(evt, p.do).status == "ok") return; } };
+    ws.onopen = function() { if (!active) { console.log('Connect'); ws.send(enc(tuple(atom('electron'),atom('init')))); active=true; } };
+    ws.onclose = function() { active = false; console.log('Disconnect'); }; next(); }
+
+function is(x,num,name) { return x.t==106?false:(x.v.length === num && x.v[0].v === name); }
+
+/// N2O Protocols
+var $io = {}; $io.on = function onio(r, cb) { if (is(r,3,'io')) {//console.log(utf8_dec(r.v[1].v));
+    try { eval(utf8_dec(r.v[1].v)); if (typeof cb == 'function') cb(r); return { status: "ok" }; }
+    catch (e) { console.log(e); return { status: '' }; } } else return { status: '' }; }
+
+var protos = [$client];
+```
+
+```javascript
+app.on('ready', function(){
+   ....
+   //start your erlang app as a child process using escript 
+   ....
+   //establish ws cnx with your elerang app
+   NAGA_start("http://127.0.0.1:8001/ws/electron");
+});
+```
+
 
 Demo
 ----
