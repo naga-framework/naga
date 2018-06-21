@@ -5,16 +5,10 @@
 
 info({electron,Msg},Req,State) ->
   Module = State#cx.module,
-  try Module:event({electron,Msg}) 
-  catch E:R -> Error = wf:stack(E,R), wf:error(?MODULE,"Catch: ~p:~p~n~p",Error), Error end,
-  Actions = render_actions(wf:actions()),
-  {reply,wf_convert:format({io,iolist_to_binary(Actions),<<>>},json),Req,State};
+  Reply = try Module:event({electron,Msg}) 
+          catch E:R -> Error = wf:stack(E,R), wf:error(?MODULE,"Catch: ~p:~p~n~p",Error), Error end,
+  Actions = n2o_nitrogen:render_actions(wf:actions()),
+  wf:info(?MODULE,"Actions ~p~n",[Actions]),
+  {reply,wf_convert:format({io,Actions,Reply},json),Req,State};
 
-info(Message,Req,State) -> {unknown,Message,Req,State}.
-
-render_actions(Actions) ->
-  wf:actions([]),
-  First  = wf:render(Actions),
-  Second = wf:render(wf:actions()),
-  wf:actions([]),
-  [First,Second].
+info(Message, Req, State) -> {unknown,Message, Req, State}.
