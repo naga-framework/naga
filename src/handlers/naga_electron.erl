@@ -1,7 +1,6 @@
 -module(naga_electron).
 -include_lib("n2o/include/wf.hrl").
--include_lib("nitro/include/nitro.hrl").
--include_lib("naga/include/naga.hrl").
+
 -compile(export_all).
 
 info({electron,init},Req,State) ->
