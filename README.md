@@ -17,8 +17,8 @@ Features
 * Desktop application erlang/electron-app 
 
 
-Electron
---------
+Naga/Electron Desktop App
+-------------------------
 - bundle your electron-app with erlang runtime (or not), and your naga-app (mad bundle <appname>)
 
 sys.config
