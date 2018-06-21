@@ -101,7 +101,7 @@ app.on('ready', function(){
    ....
    //start your erlang app as a child process using escript 
    ....
-   //establish ws cnx with your elerang app
+   //establish ws cnx with your erlang app
    NAGA_start("http://127.0.0.1:8001/ws/electron");
 });
 ```
