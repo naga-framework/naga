@@ -23,7 +23,7 @@ Naga/Electron Desktop App
 
 sys.config
 ```erlang
-[{n2o, [
+[{n2o, [...
         ,{protocols,[ naga_electron, %ws 
                       naga_load,     %live reload
                       ...
