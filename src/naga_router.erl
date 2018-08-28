@@ -250,7 +250,8 @@ opts(App, H, Opts)
                             is_steroid  =is_steroid(C),
                             params      =P,
                             opts        =Opts};
-
+%FIXME add file
+opts(_App,naga_static,{dir,Dir}) -> {dir,Dir,[{mimetypes,cow_mimetypes,all}]};
 opts(_App,H,Opts) 
   when is_atom(H) -> Opts.
 consult(App)      -> Path = route_file(App),
