@@ -294,6 +294,8 @@ render({{js,V,H},Ctx})           -> header(H++?CTYPE_JS),
                                     {ok,Io} = Tpl:render(V++maps:to_list(Ctx),trans(V,Ctx)),
                                     apply_after(Io,Ctx); 
 render({{stream,Gen,Acc},_})     -> {stream,Gen,Acc};
+render({{dtl,B},Ctx})            -> #{'_application':=App,'_controller':=C,'_action':=A} = Ctx,
+                                    render({#dtl{file={App,C,A,html},app=App,bindings=B},Ctx});
 render({#dtl{}=E,Ctx})           -> Io = wf_render:render(E),
                                     apply_after(Io,Ctx);
 render(E)                        -> wf_render:render(E).
