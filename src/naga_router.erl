@@ -104,6 +104,7 @@ dispatch_routes(App) ->
                               ({N,A,B,C},{Acc,Count}) ->
                                 {Acc++[{N,convert(A),B,C}], Count}
                            end,{[],1-length(RC)}, R),
+  io:format("~p ~n",[{Rules,N}]),
   DispatchModule = module_dispatch_name(App),
   ok = dispatch_compiler:compile_load(DispatchModule,Rules),    
   {ok, App, Modules, Components, DispatchModule, N, Rules}.
@@ -265,7 +266,8 @@ consult(App)      -> Path = route_file(App),
 routeIndexof(A,O) ->  #route{type=mvc,application=A,controller=naga_indexof,
                         action=index,want_session=true,is_steroid=true,opts=O}.
 
-
+dispatch_route(App,{plugins, Handler, Opts}) -> case catch Handler:route(Opts) of 
+                                                 {'EXIT',_} -> [];Routes -> Routes end;
 dispatch_route(App,{Code, Handler, Opts}) 
                    when is_integer(Code) -> [{base_url(App,code_url(Code)), handler(App,Handler), opts(App,Handler,Opts)}];
 dispatch_route(App,{Url, Handler, Opts}) -> O = opts(App,Handler,Opts), 
